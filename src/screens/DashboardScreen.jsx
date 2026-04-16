@@ -21,7 +21,7 @@ export default function DashboardScreen() {
   const soilData = {
     labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     datasets: [{
-      data: [65, 68, 70, 72, 58, 65, 85],
+      data: [42, 55, 28, 46, 36 , 65, 60],
       color: (opacity = 1) => `rgba(16, 185, 129, ${opacity})`,
     }]
   };
@@ -159,7 +159,7 @@ export default function DashboardScreen() {
         <View style={styles.systemGrid}>
           <View style={styles.systemItem}>
             <Cloud size={20} color="#3b82f6" />
-            <Text style={styles.systemText}>IoT Sensors: Online</Text>
+            <Text style={styles.systemText}>IoT Sensors: Offline</Text>
           </View>
           <View style={styles.systemItem}>
             <Brain size={20} color="#8b5cf6" />
