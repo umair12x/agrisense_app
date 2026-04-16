@@ -1,17 +1,19 @@
 // DiseaseScreen.jsx
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from "react-native";
-import { Camera, Upload, AlertTriangle, CheckCircle, Leaf } from "lucide-react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert } from "react-native";
+import { Camera, Upload, AlertTriangle, CheckCircle, Leaf, X } from "lucide-react-native";
+import { launchImageLibrary, launchCamera } from "react-native-image-picker";
 
 export default function DiseaseScreen() {
   const [selectedImage, setSelectedImage] = useState(null);
+  const [imageUri, setImageUri] = useState(null);
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const crops = [
     { name: "Tomato", color: "#ef4444", icon: "🍅" },
-    { name: "Potato", color: "#8b5cf6", icon: "🥔" },
-    { name: "Pepper", color: "#f59e0b", icon: "🌶️" },
+    { name: "Potato", color: "#8b5cf6", icon: "🥔" , disabled: true},
+    { name: "Pepper", color: "#f59e0b", icon: "🌶️",disabled: true },
     { name: "Rice", color: "#10b981", icon: "🌾", disabled: true },
     { name: "Wheat", color: "#d97706", icon: "🌾", disabled: true },
   ];
@@ -22,14 +24,71 @@ export default function DiseaseScreen() {
     { disease: "Bacterial Spot", confidence: 78, treatment: "Use copper sprays and practice crop rotation" },
   ];
 
-  const handleUpload = () => {
+  const handlePickFromLibrary = () => {
+    const options = {
+      mediaType: "photo",
+      maxWidth: 1000,
+      maxHeight: 1000,
+      quality: 0.8,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log("User cancelled image picker");
+      } else if (response.errorCode) {
+        Alert.alert("Error", response.errorMessage || "Failed to pick image");
+      } else if (response.assets && response.assets.length > 0) {
+        const asset = response.assets[0];
+        setImageUri(asset.uri);
+        setSelectedImage(asset.uri);
+        setPrediction(null);
+      }
+    });
+  };
+
+  const handleCameraCapture = () => {
+    const options = {
+      mediaType: "photo",
+      maxWidth: 1000,
+      maxHeight: 1000,
+      quality: 0.8,
+    };
+
+    launchCamera(options, (response) => {
+      if (response.didCancel) {
+        console.log("User cancelled camera");
+      } else if (response.errorCode) {
+        Alert.alert("Error", response.errorMessage || "Failed to capture image");
+      } else if (response.assets && response.assets.length > 0) {
+        const asset = response.assets[0];
+        setImageUri(asset.uri);
+        setSelectedImage(asset.uri);
+        setPrediction(null);
+      }
+    });
+  };
+
+  const handleAnalyze = () => {
+    if (!selectedImage) {
+      Alert.alert("No Image", "Please select or capture an image first");
+      return;
+    }
+
     setLoading(true);
-    // Simulate API call
+    // Simulate API call with your trained AI model
+    // Replace this with your actual API call to the AI model
     setTimeout(() => {
-      setSelectedImage("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSQaV90Vy3_N1gQo-C5iVx0QqA9yK19CpGjNQ&s");
       setPrediction(sampleResults[0]);
       setLoading(false);
+      // TODO: Send selectedImage/imageUri to your trained AI model API
+      console.log("Image ready for AI analysis:", imageUri);
     }, 1500);
+  };
+
+  const handleClearImage = () => {
+    setSelectedImage(null);
+    setImageUri(null);
+    setPrediction(null);
   };
 
   return (
@@ -49,13 +108,20 @@ export default function DiseaseScreen() {
         </View>
         
         <TouchableOpacity 
-          style={styles.uploadArea} 
-          onPress={handleUpload}
+          style={styles.uploadArea}
           disabled={loading}
         >
           {selectedImage ? (
             <View style={styles.imagePreview}>
-              <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+              <View style={styles.imageContainer}>
+                <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+                <TouchableOpacity 
+                  style={styles.clearButton}
+                  onPress={handleClearImage}
+                >
+                  <X size={16} color="white" />
+                </TouchableOpacity>
+              </View>
               <Text style={styles.previewText}>Leaf Image Selected</Text>
             </View>
           ) : (
@@ -67,17 +133,37 @@ export default function DiseaseScreen() {
           )}
         </TouchableOpacity>
 
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.cameraButton]} 
+            onPress={handleCameraCapture}
+            disabled={loading}
+          >
+            <Camera size={16} color="white" />
+            <Text style={styles.actionButtonText}>Take Photo</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.galleryButton]} 
+            onPress={handlePickFromLibrary}
+            disabled={loading}
+          >
+            <Upload size={16} color="white" />
+            <Text style={styles.actionButtonText}>Choose File</Text>
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity 
-          style={[styles.uploadButton, loading && styles.uploadButtonDisabled]} 
-          onPress={handleUpload}
-          disabled={loading}
+          style={[styles.analyzeButton, (!selectedImage || loading) && styles.analyzeButtonDisabled]} 
+          onPress={handleAnalyze}
+          disabled={!selectedImage || loading}
         >
           {loading ? (
-            <Text style={styles.uploadButtonText}>Analyzing...</Text>
+            <Text style={styles.analyzeButtonText}>Analyzing...</Text>
           ) : (
             <>
               <Upload size={16} color="white" />
-              <Text style={styles.uploadButtonText}>Analyze with AI</Text>
+              <Text style={styles.analyzeButtonText}>Analyze with AI</Text>
             </>
           )}
         </TouchableOpacity>
@@ -177,9 +263,39 @@ const styles = StyleSheet.create({
   uploadText: { fontSize: 16, color: "#475569", marginTop: 12, marginBottom: 4 },
   uploadHint: { fontSize: 12, color: "#94a3b8" },
   imagePreview: { alignItems: "center" },
-  previewImage: { width: 100, height: 100, borderRadius: 8, marginBottom: 8 },
+  imageContainer: { position: "relative", marginBottom: 8 },
+  previewImage: { width: 100, height: 100, borderRadius: 8 },
+  clearButton: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "#dc2626",
+    borderRadius: 12,
+    padding: 4,
+  },
   previewText: { fontSize: 14, color: "#475569" },
-  uploadButton: {
+  buttonContainer: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
+  },
+  cameraButton: {
+    backgroundColor: "#3b82f6",
+  },
+  galleryButton: {
+    backgroundColor: "#8b5cf6",
+  },
+  actionButtonText: { color: "white", fontSize: 14, fontWeight: "600" },
+  analyzeButton: {
     backgroundColor: "#10b981",
     flexDirection: "row",
     alignItems: "center",
@@ -188,8 +304,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 8
   },
-  uploadButtonDisabled: { backgroundColor: "#94a3b8" },
-  uploadButtonText: { color: "white", fontSize: 16, fontWeight: "600" },
+  analyzeButtonDisabled: { backgroundColor: "#94a3b8" },
+  analyzeButtonText: { color: "white", fontSize: 16, fontWeight: "600" },
   sectionTitle: { fontSize: 18, fontWeight: "700", color: "#1e293b", marginHorizontal: 20, marginBottom: 12 },
   cropsScroll: { paddingHorizontal: 20, marginBottom: 24 },
   cropCard: {
