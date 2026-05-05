@@ -13,6 +13,7 @@
     "@react-navigation/bottom-tabs": "^7.10.1",
     "@react-navigation/native": "^7.1.28",
     "expo": "~54.0.32",
+    "expo-image-picker": "~17.0.11",
     "expo-status-bar": "~3.0.9",
     "lucide-react-native": "^0.562.0",
     "react": "19.1.0",

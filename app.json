@@ -22,6 +22,15 @@
       },
       "edgeToEdgeEnabled": true
     },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow AgriSense to access your photos to select leaf images.",
+          "cameraPermission": "Allow AgriSense to access your camera to capture leaf images."
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }
