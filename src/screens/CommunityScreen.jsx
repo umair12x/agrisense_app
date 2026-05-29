@@ -1,4 +1,3 @@
-// CommunityScreen.jsx - Fixed with better error handling
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
@@ -19,21 +18,14 @@ import {
   Share,
   Keyboard,
 } from "react-native";
-import { launchImageLibrary, launchCamera } from "react-native-image-picker";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Users, MessageCircle, Heart, Share2, X, Send, Image as ImageIcon, XCircle, Trash2 } from "lucide-react-native";
+import * as ImagePicker from "expo-image-picker";
+import storageService from "../services/storageService";
+import { APP_API_BASE_URL as API_URL } from "../utils/api";
+import { Users, MessageCircle, Heart, Share2, X, Send, Image as ImageIcon, XCircle, Trash2, Camera } from "lucide-react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// API Configuration - Use your computer's IP address for physical device testing
-// For iOS emulator: http://localhost:5000/api
-// For Android emulator: http://10.0.2.2:5000/api
-// For physical device: http://YOUR_COMPUTER_IP:5000/api
-const API_URL = Platform.select({
-  ios: "http://localhost:5000/api",
-  android: "http://192.168.0.101:5000/api",
-  default: "http://localhost:5000/api",
-});
+
 
 
 // ─── Time Ago Helper ─────────────────────────────────────────────
@@ -645,8 +637,8 @@ export default function CommunityScreen({ AuthModalComponent }) {
 
   const loadUserAndToken = async () => {
     try {
-      const savedToken = await AsyncStorage.getItem("token");
-      const savedUser = await AsyncStorage.getItem("user");
+      const savedToken = await storageService.getItem("token");
+      const savedUser = await storageService.getItem("user");
       
       if (savedToken && savedUser) {
         setToken(savedToken);
@@ -680,7 +672,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
             setUsingMockData(false);
             // Cache posts silently
             try {
-              await AsyncStorage.setItem("cached_posts", JSON.stringify(data.posts));
+              await storageService.setItem("cached_posts", JSON.stringify(data.posts));
             } catch (cacheError) {
               // Silent fail
             }
@@ -693,7 +685,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
         clearTimeout(timeoutId);
         // Try cached posts first
         try {
-          const cachedPosts = await AsyncStorage.getItem("cached_posts");
+          const cachedPosts = await storageService.getItem("cached_posts");
           if (cachedPosts) {
             setPosts(JSON.parse(cachedPosts));
             setUsingMockData(true);
@@ -730,102 +722,125 @@ export default function CommunityScreen({ AuthModalComponent }) {
       Alert.alert("Info", "Please add some content to your post");
       return;
     }
-    
+
+    if (!token || !user) {
+      handleAuthRequired();
+      return;
+    }
+
     setUploading(true);
-    
+
+    const content = newPostContent.trim();
+    let mediaUrl = newPostMedia?.startsWith("http") ? newPostMedia : null;
+    let mediaType = mediaUrl ? newPostMediaType : null;
+
     try {
-      // Create a temporary post for optimistic update
-      const tempPost = {
-        id: Date.now().toString(),
-        content: newPostContent,
-        mediaUrl: newPostMedia,
-        mediaType: newPostMediaType,
-        createdAt: new Date().toISOString(),
-        user: user || { id: "temp", name: "You", verified: false },
-        userId: user?.id || "temp",
-        likes: [],
-        comments: [],
-        tags: [],
-      };
-      
-      setPosts(prev => [tempPost, ...prev]);
+      if (newPostMedia && !mediaUrl) {
+        const uploadForm = new FormData();
+        uploadForm.append("image", {
+          uri: newPostMedia,
+          type: "image/jpeg",
+          name: `post_${Date.now()}.jpg`,
+        });
+
+        const uploadResponse = await fetch(`${API_URL}/upload`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: uploadForm,
+        });
+
+        const uploadData = await uploadResponse.json().catch(() => ({}));
+        if (!uploadResponse.ok || !uploadData.success || !uploadData.url) {
+          throw new Error(uploadData.message || "Failed to upload image");
+        }
+
+        mediaUrl = uploadData.url;
+        mediaType = "image";
+      }
+
+      const response = await fetch(`${API_URL}/posts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          content,
+          mediaUrl,
+          mediaType,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to create post");
+      }
+
+      setPosts((prev) => [data.post, ...prev]);
       setShowCreateModal(false);
       setNewPostContent("");
       setNewPostMedia(null);
-      
-      // Try to send to API
-      if (token && user) {
-        const response = await fetch(`${API_URL}/posts`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            content: newPostContent,
-            mediaUrl: newPostMedia,
-            mediaType: newPostMediaType,
-          }),
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            // Replace temp post with real one
-            setPosts(prev => prev.map(p => p.id === tempPost.id ? data.post : p));
-          }
-        }
-      }
-      
+      setNewPostMediaType(null);
       Alert.alert("Success", "Your post has been shared!");
     } catch (error) {
       console.error("Create post error:", error);
-      Alert.alert("Error", "Failed to create post. Please try again.");
+      Alert.alert("Error", error.message || "Failed to create post. Please try again.");
     } finally {
       setUploading(false);
     }
   };
 
-  const selectMedia = () => {
-    Alert.alert(
-      "Add Media",
-      "Choose an option",
-      [
-        { text: "Camera", onPress: () => openCamera() },
-        { text: "Gallery", onPress: () => openGallery() },
-        { text: "Cancel", style: "cancel" },
-      ]
-    );
+  const setPickedMedia = (asset) => {
+    if (!asset?.uri) return;
+    setNewPostMedia(asset.uri);
+    setNewPostMediaType("image");
   };
 
-  const openCamera = () => {
-    const options = {
-      mediaType: "photo",
-      saveToPhotos: true,
-      quality: 0.8,
-    };
-    
-    launchCamera(options, (response) => {
-      if (response.assets && response.assets[0]) {
-        setNewPostMedia(response.assets[0].uri);
-        setNewPostMediaType("image");
+  const openCamera = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission required", "Allow camera access to take photos for your post.");
+        return;
       }
-    });
+
+      const response = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+        allowsEditing: false,
+      });
+
+      if (!response.canceled && response.assets?.[0]) {
+        setPickedMedia(response.assets[0]);
+      }
+    } catch (error) {
+      console.error("Camera error:", error);
+      Alert.alert("Error", "Failed to open camera.");
+    }
   };
 
-  const openGallery = () => {
-    const options = {
-      mediaType: "mixed",
-      includeBase64: false,
-      quality: 0.8,
-    };
-    
-    launchImageLibrary(options, (response) => {
-      if (response.assets && response.assets[0]) {
-        setNewPostMedia(response.assets[0].uri);
-        setNewPostMediaType(response.assets[0].type?.startsWith("video") ? "video" : "image");
+  const openGallery = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission required", "Allow gallery access to choose photos for your post.");
+        return;
       }
-    });
+
+      const response = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+        allowsEditing: false,
+      });
+
+      if (!response.canceled && response.assets?.[0]) {
+        setPickedMedia(response.assets[0]);
+      }
+    } catch (error) {
+      console.error("Gallery error:", error);
+      Alert.alert("Error", "Failed to open gallery.");
+    }
   };
 
   const handleAuthRequired = () => {
@@ -844,8 +859,8 @@ export default function CommunityScreen({ AuthModalComponent }) {
     setUser(userData);
     setToken(userToken);
     try {
-      AsyncStorage.setItem("token", userToken);
-      AsyncStorage.setItem("user", JSON.stringify(userData));
+      storageService.setItem("token", userToken);
+      storageService.setItem("user", JSON.stringify(userData));
     } catch (error) {
       // Silent fail - continue without storage
     }
@@ -990,9 +1005,13 @@ export default function CommunityScreen({ AuthModalComponent }) {
             )}
             
             <View style={styles.modalActions}>
-              <TouchableOpacity onPress={selectMedia} style={styles.mediaButton}>
+              <TouchableOpacity onPress={openCamera} style={styles.mediaButton}>
+                <Camera size={20} color="#10b981" />
+                <Text style={styles.mediaButtonText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={openGallery} style={styles.mediaButton}>
                 <ImageIcon size={20} color="#10b981" />
-                <Text style={styles.mediaButtonText}>Add Image/Video</Text>
+                <Text style={styles.mediaButtonText}>Gallery</Text>
               </TouchableOpacity>
             </View>
             
@@ -1586,6 +1605,7 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: "row",
+    gap: 12,
     marginBottom: 24,
   },
   mediaButton: {
