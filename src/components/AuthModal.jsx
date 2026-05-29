@@ -16,20 +16,11 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import storageService from "../services/storageService";
+import { APP_API_BASE_URL as API_URL } from "../utils/api";
 import { X, Eye, EyeOff, Mail, Lock, User, Check } from "lucide-react-native";
 
 const { width, height } = Dimensions.get("window");
-
-// API Configuration - Use your computer's IP address for physical device testing
-// For iOS emulator: http://localhost:5000/api
-// For Android emulator: http://10.0.2.2:5000/api
-// For physical device: http://YOUR_COMPUTER_IP:5000/api
-const API_URL = Platform.select({
-  ios: "http://localhost:5000/api",
-  android: "http://192.168.0.101:5000/api",
-  default: "http://localhost:5000/api",
-});
 
 export default function AuthModal({ isOpen, onClose, onSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -119,29 +110,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
         body: JSON.stringify(body),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
-      if (!data.success) {
+      if (!response.ok || !data.success) {
         setError(data.message || "Authentication failed");
-        setLoading(false);
         return;
       }
 
-      // Save to storage
-      if (rememberMe || isLogin) {
-        await AsyncStorage.setItem("token", data.token);
-        await AsyncStorage.setItem("user", JSON.stringify(data.user));
-      } else {
-        // For non-remember me, we still store but with session-like behavior
-        await AsyncStorage.setItem("token", data.token);
-        await AsyncStorage.setItem("user", JSON.stringify(data.user));
-      }
+      await storageService.setItem("token", data.token);
+      await storageService.setItem("user", JSON.stringify(data.user));
 
       onSuccess(data.user, data.token);
       onClose();
       resetForm();
     } catch (err) {
-      setError("Something went wrong. Please try again.");
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
       setLoading(false);
     }
   };
