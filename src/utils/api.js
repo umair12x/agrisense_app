@@ -22,22 +22,22 @@ const resolveRagApiUrl = () => {
   const devHost = getExpoDevHost();
 
   // Expo Go on a physical device: use the same LAN IP as the Metro bundler
-  if (__DEV__ && devHost && !["localhost", "127.0.0.1"].includes(devHost)) {
+  if (__DEV__ && devHost && !["localhost", "192.168.0.102"].includes(devHost)) {
     return `http://${devHost}:${LOCAL_RAG_PORT}`;
   }
 
   if (envUrl) {
     if (Platform.OS === "android" && envUrl.includes("localhost")) {
-      return envUrl.replace("localhost", "10.0.2.2");
+      return envUrl.replace("localhost", "192.168.0.102");
     }
     return envUrl;
   }
 
   if (Platform.OS === "android") {
-    return `http://10.0.2.2:${LOCAL_RAG_PORT}`;
+    return `http://192.168.0.102:${LOCAL_RAG_PORT}`;
   }
 
-  return `http://localhost:${LOCAL_RAG_PORT}`;
+  return `http://192.168.0.102:${LOCAL_RAG_PORT}`;
 };
 
 export const RAG_API_BASE_URL = resolveRagApiUrl();
