@@ -12,14 +12,8 @@ import {
   Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { Leaf, Camera, Upload, AlertTriangle, CheckCircle, X, ChevronRight, Zap, Shield, Award } from "lucide-react-native";
-
-// API Configuration
-const API_URL = Platform.select({
-  ios: "http://localhost:5000/api",
-  android: "http://10.0.2.2:5000/api",
-  default: "http://localhost:5000/api",
-});
+import { Leaf, Camera, Upload, AlertTriangle, CheckCircle, X, Zap, Shield } from "lucide-react-native";
+import { predictDisease, getDiseaseInfo } from "../utils/api";
 
 // Trust Features Data
 const TRUST_FEATURES = [
@@ -39,24 +33,6 @@ const TRUST_FEATURES = [
     description: "Continuously expanding our disease database",
   },
 ];
-
-// Sample Result for Preview
-const SAMPLE_RESULT = {
-  disease: "Early Blight",
-  confidence: 94,
-  severity: "Moderate",
-  treatment: [
-    "Apply copper-based fungicide every 7-10 days",
-    "Remove and destroy infected leaves",
-    "Improve air circulation around plants",
-    "Avoid overhead watering",
-  ],
-  prevention: [
-    "Use disease-resistant seed varieties",
-    "Practice crop rotation every 2-3 years",
-    "Maintain proper plant spacing",
-  ],
-};
 
 // How It Works Steps
 const HOW_IT_WORKS_STEPS = [
@@ -97,50 +73,11 @@ const TrustFeatures = () => (
   </View>
 );
 
-const ResultPreview = () => (
-  <View style={styles.resultPreviewCard}>
-    <Text style={styles.resultPreviewTitle}>Sample Detection Result</Text>
-    <Text style={styles.resultPreviewSubtitle}>
-      This is how results will appear after AI analysis - clear, actionable, and farmer-friendly
-    </Text>
-
-    <View style={styles.statsGrid}>
-      <View style={styles.statBox}>
-        <Text style={styles.statLabel}>Disease Name</Text>
-        <Text style={styles.statValue}>{SAMPLE_RESULT.disease}</Text>
-      </View>
-      <View style={styles.statBox}>
-        <Text style={styles.statLabel}>Confidence</Text>
-        <Text style={[styles.statValue, styles.statValueBlue]}>
-          {SAMPLE_RESULT.confidence}%
-        </Text>
-      </View>
-      <View style={styles.statBox}>
-        <Text style={styles.statLabel}>Severity Level</Text>
-        <Text style={[styles.statValue, styles.statValueYellow]}>
-          {SAMPLE_RESULT.severity}
-        </Text>
-      </View>
-    </View>
-
-    <View style={styles.previewTreatmentBox}>
-      <Text style={styles.previewTreatmentTitle}>Recommended Treatment</Text>
-      {SAMPLE_RESULT.treatment.map((item, idx) => (
-        <View key={idx} style={styles.previewTreatmentItem}>
-          <Text style={styles.previewTreatmentBullet}>•</Text>
-          <Text style={styles.previewTreatmentText}>{item}</Text>
-        </View>
-      ))}
-    </View>
-  </View>
-);
-
 export default function DiseaseScreen() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
-  const [showResultModal, setShowResultModal] = useState(false);
   const [showSourceModal, setShowSourceModal] = useState(false);
 
   const crops = [
@@ -223,35 +160,43 @@ export default function DiseaseScreen() {
     setLoading(true);
 
     try {
-      // Create form data for API request
-      const formData = new FormData();
-      formData.append("image", {
+      const imageFile = {
         uri: selectedImage.uri,
         type: selectedImage.type || "image/jpeg",
         name: selectedImage.fileName || `leaf_${Date.now()}.jpg`,
-      });
-      formData.append("top_k", "3");
+      };
 
-      // Make API call to your backend
-      const response = await fetch(`${API_URL}/predict/disease`, {
-        method: "POST",
-        body: formData,
-      });
+      const prediction = await predictDisease(imageFile, 3);
+      const topPrediction = prediction?.data?.top_prediction;
 
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        setResult(data.data);
-        setHasAnalyzed(true);
-        setShowResultModal(true);
-      } else {
-        throw new Error(data.message || "Analysis failed");
+      if (!prediction?.success || !topPrediction?.disease) {
+        throw new Error(prediction?.message || "Analysis failed");
       }
+
+      let diseaseInfo = null;
+      try {
+        diseaseInfo = await getDiseaseInfo(topPrediction.disease);
+      } catch (infoError) {
+        console.warn("Could not load disease details:", infoError);
+      }
+
+      const confidence = Math.round((topPrediction.confidence || 0) * 100);
+      const mappedResult = {
+        disease: topPrediction.disease,
+        confidence,
+        severity: diseaseInfo?.info?.severity || "Unknown",
+        treatment: diseaseInfo?.info?.treatment || [],
+        prevention: diseaseInfo?.info?.prevention || [],
+        allPredictions: prediction?.data?.all_predictions || [],
+      };
+
+      setResult(mappedResult);
+      setHasAnalyzed(true);
     } catch (error) {
       console.error("Analysis error:", error);
       Alert.alert(
         "Analysis Failed",
-        error.message || "Failed to analyze image. Please ensure the backend API is running."
+        error.message || "Failed to analyze image. Please try again."
       );
     } finally {
       setLoading(false);
@@ -323,26 +268,6 @@ export default function DiseaseScreen() {
             )}
           </TouchableOpacity>
 
-          <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.cameraButton]}
-              onPress={handleCameraCapture}
-              disabled={loading}
-            >
-              <Camera size={16} color="white" />
-              <Text style={styles.actionButtonText}>Take Photo</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.galleryButton]}
-              onPress={handlePickFromLibrary}
-              disabled={loading}
-            >
-              <Upload size={16} color="white" />
-              <Text style={styles.actionButtonText}>Choose File</Text>
-            </TouchableOpacity>
-          </View>
-
           <TouchableOpacity
             style={[
               styles.analyzeButton,
@@ -391,7 +316,7 @@ export default function DiseaseScreen() {
         </ScrollView>
       </View>
 
-      {/* Result Display or Preview */}
+      {/* Result Display */}
       {hasAnalyzed && result ? (
         <View style={styles.resultCard}>
           <View style={styles.resultHeader}>
@@ -400,112 +325,56 @@ export default function DiseaseScreen() {
               <Text style={styles.resultTitle}>Disease Detected</Text>
               <View style={styles.confidenceBadge}>
                 <Text style={styles.confidenceText}>
-                  {result.confidence || 94}% Confidence
+                  {result.confidence}% Confidence
                 </Text>
               </View>
             </View>
           </View>
 
-          <Text style={styles.diseaseName}>
-            🦠 {result.disease || "Early Blight"}
-          </Text>
+          <Text style={styles.diseaseName}>🦠 {result.disease}</Text>
 
-          <View style={styles.treatmentCard}>
-            <View style={styles.treatmentHeader}>
-              <CheckCircle size={20} color="#059669" />
-              <Text style={styles.treatmentTitle}>Recommended Treatment</Text>
-            </View>
-            {(result.treatment || SAMPLE_RESULT.treatment).map((item, idx) => (
-              <View key={idx} style={styles.treatmentItem}>
-                <Text style={styles.treatmentBullet}>•</Text>
-                <Text style={styles.treatmentText}>{item}</Text>
+          {result.severity ? (
+            <Text style={styles.severityText}>Severity: {result.severity}</Text>
+          ) : null}
+
+          {result.treatment?.length > 0 && (
+            <View style={styles.treatmentCard}>
+              <View style={styles.treatmentHeader}>
+                <CheckCircle size={20} color="#059669" />
+                <Text style={styles.treatmentTitle}>Recommended Treatment</Text>
               </View>
-            ))}
-          </View>
+              {result.treatment.map((item, idx) => (
+                <View key={idx} style={styles.treatmentItem}>
+                  <Text style={styles.treatmentBullet}>•</Text>
+                  <Text style={styles.treatmentText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
-          <Text style={styles.modelInfo}>
-            Model: EfficientNetB0 • Dataset: PlantVillage • Accuracy: 94.7%
-          </Text>
+          {result.prevention?.length > 0 && (
+            <View style={styles.treatmentCard}>
+              <View style={styles.treatmentHeader}>
+                <Shield size={20} color="#059669" />
+                <Text style={styles.treatmentTitle}>Prevention Tips</Text>
+              </View>
+              {result.prevention.map((item, idx) => (
+                <View key={idx} style={styles.treatmentItem}>
+                  <Text style={styles.treatmentBullet}>•</Text>
+                  <Text style={styles.treatmentText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
-      ) : (
-        <ResultPreview />
-      )}
+      ) : null}
 
       {/* Trust Features */}
       <TrustFeatures />
 
-      {/* CTA Section */}
-      <View style={styles.ctaSection}>
-        <Text style={styles.ctaTitle}>Protect Your Crops With AI Today</Text>
-        <Text style={styles.ctaSubtitle}>
-          Early detection can save crops, reduce losses, and improve yield quality
-        </Text>
-        <TouchableOpacity style={styles.ctaButton}>
-          <Text style={styles.ctaButtonText}>Get Started Now</Text>
-          <ChevronRight size={16} color="#065f46" />
-        </TouchableOpacity>
-      </View>
-
       <Text style={styles.futureNote}>
         Future Expansion: YOLOv8 for disease localization • Real-world dataset collection
       </Text>
-
-      {/* Result Modal */}
-      <Modal
-        visible={showResultModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowResultModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Analysis Result</Text>
-              <TouchableOpacity onPress={() => setShowResultModal(false)}>
-                <X size={24} color="#64748b" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              <View style={styles.resultHeader}>
-                <AlertTriangle size={24} color="#dc2626" />
-                <View style={styles.resultTitleContainer}>
-                  <Text style={styles.resultTitle}>Disease Detected</Text>
-                  <View style={styles.confidenceBadge}>
-                    <Text style={styles.confidenceText}>
-                      {result?.confidence || 94}% Confidence
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              <Text style={styles.diseaseName}>
-                🦠 {result?.disease || "Early Blight"}
-              </Text>
-
-              <View style={styles.treatmentCard}>
-                <View style={styles.treatmentHeader}>
-                  <CheckCircle size={20} color="#059669" />
-                  <Text style={styles.treatmentTitle}>Recommended Treatment</Text>
-                </View>
-                {(result?.treatment || SAMPLE_RESULT.treatment).map((item, idx) => (
-                  <View key={idx} style={styles.treatmentItem}>
-                    <Text style={styles.treatmentBullet}>•</Text>
-                    <Text style={styles.treatmentText}>{item}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <TouchableOpacity
-                style={styles.closeModalButton}
-                onPress={() => setShowResultModal(false)}
-              >
-                <Text style={styles.closeModalButtonText}>Close</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         visible={showSourceModal}
@@ -852,6 +721,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     color: "#991b1b",
+    marginBottom: 8,
+  },
+  severityText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#b45309",
     marginBottom: 16,
   },
   treatmentCard: {
