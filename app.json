@@ -13,23 +13,30 @@
       "backgroundColor": "#f6f6e0"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/splash-icon.png",
         "backgroundColor": "#fff6f6e0ffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "usesCleartextTraffic": true
     },
     "plugins": [
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow AgriSense to access your photos to select leaf images.",
-          "cameraPermission": "Allow AgriSense to access your camera to capture leaf images."
+          "photosPermission": "Allow AgriSense to access your photos for disease detection and community posts.",
+          "cameraPermission": "Allow AgriSense to access your camera for disease detection and community posts."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
