@@ -15,10 +15,9 @@ import {
   KeyboardAvoidingView,
   PermissionsAndroid,
 } from "react-native";
-import { Audio } from "expo-av";
+import { playAudioBlob, releaseActiveAudio } from "../utils/playAudio";
 import storageService from "../services/storageService";
 import {
-  APP_API_BASE_URL,
   RAG_API_BASE_URL,
   askRagAssistant,
   translateAssistantText,
@@ -44,6 +43,8 @@ import {
   Menu,
   ChevronLeft,
 } from "lucide-react-native";
+import { useTheme } from "../theme/ThemeContext";
+import ThemeToggle from "../components/ThemeToggle";
 
 const LOCAL_SESSIONS_KEY = "assistant_local_sessions";
 const LOCAL_MESSAGES_KEY = "assistant_current_messages";
@@ -70,117 +71,6 @@ const normalizeMessages = (items = []) =>
     sources: message.sources || [],
     createdAt: message.createdAt || new Date().toISOString(),
   }));
-
-// Auth Modal Component
-const AuthModal = ({ isOpen, onClose, onSuccess }) => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSubmit = async () => {
-    if (!email || !password || (!isLogin && !name)) {
-      setError("Please fill in all fields");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    try {
-      const endpoint = isLogin
-        ? `${APP_API_BASE_URL}/auth/login`
-        : `${APP_API_BASE_URL}/auth/signup`;
-      const body = isLogin ? { email, password } : { name, email, password };
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "Authentication failed");
-      }
-
-      await storageService.setItem("token", data.token);
-      await storageService.setItem("user", JSON.stringify(data.user));
-
-      onSuccess(data.user, data.token);
-      onClose();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <Modal visible={isOpen} animationType="slide" transparent={true}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <TouchableOpacity style={styles.modalClose} onPress={onClose}>
-            <X size={24} color="#6b7280" />
-          </TouchableOpacity>
-
-          <Text style={styles.modalTitle}>{isLogin ? "Welcome Back" : "Create Account"}</Text>
-          <Text style={styles.modalSubtitle}>
-            {isLogin ? "Login to save your chats" : "Join AgriSense AI Community"}
-          </Text>
-
-          {!isLogin && (
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Full Name"
-              value={name}
-              onChangeText={setName}
-              placeholderTextColor="#9ca3af"
-            />
-          )}
-
-          <TextInput
-            style={styles.modalInput}
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholderTextColor="#9ca3af"
-          />
-
-          <TextInput
-            style={styles.modalInput}
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholderTextColor="#9ca3af"
-          />
-
-          {error ? <Text style={styles.modalError}>{error}</Text> : null}
-
-          <TouchableOpacity style={styles.modalButton} onPress={handleSubmit} disabled={loading}>
-            <Text style={styles.modalButtonText}>
-              {loading ? "Please wait..." : isLogin ? "Login" : "Sign Up"}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => setIsLogin(!isLogin)}>
-            <Text style={styles.modalSwitch}>
-              {isLogin ? "Need an account? Sign Up" : "Already have an account? Login"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-};
 
 // Chat Message Component
 const ChatMessage = ({ message, onSpeak, onTranslate, translating, translation }) => {
@@ -263,7 +153,8 @@ const ChatMessage = ({ message, onSpeak, onTranslate, translating, translation }
 };
 
 // Main Assistant Component
-export default function AssistantScreen() {
+export default function AssistantScreen({ AuthModalComponent }) {
+  const { colors } = useTheme();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [inputLanguage, setInputLanguage] = useState("ur");
@@ -281,7 +172,6 @@ export default function AssistantScreen() {
   const [isListening, setIsListening] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [translations, setTranslations] = useState({});
-  const [sound, setSound] = useState(null);
   const [ragConnected, setRagConnected] = useState(false);
   const [ragChecking, setRagChecking] = useState(true);
   const scrollViewRef = useRef();
@@ -291,33 +181,30 @@ export default function AssistantScreen() {
     loadUserData();
   }, []);
 
-  // Check local RAG server connection
-  useEffect(() => {
-    let cancelled = false;
-
-    const verifyRagConnection = async () => {
-      setRagChecking(true);
-      try {
-        const health = await checkRagHealth();
-        if (!cancelled) {
-          setRagConnected(Boolean(health?.index_loaded ?? health?.status === "ok"));
-        }
-      } catch (connectionError) {
-        if (!cancelled) {
-          setRagConnected(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setRagChecking(false);
-        }
-      }
-    };
-
-    verifyRagConnection();
-    return () => {
-      cancelled = true;
-    };
+  // Check deployed RAG API connection (Render may need time to wake up)
+  const verifyRagConnection = useCallback(async () => {
+    setRagChecking(true);
+    try {
+      const health = await checkRagHealth();
+      setRagConnected(Boolean(health?.index_loaded ?? health?.status === "ok"));
+      setError("");
+    } catch {
+      setRagConnected(false);
+    } finally {
+      setRagChecking(false);
+    }
   }, []);
+
+  useEffect(() => {
+    verifyRagConnection();
+  }, [verifyRagConnection]);
+
+  useEffect(() => {
+    if (ragConnected || ragChecking) return undefined;
+
+    const retryTimer = setInterval(verifyRagConnection, 30000);
+    return () => clearInterval(retryTimer);
+  }, [ragConnected, ragChecking, verifyRagConnection]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -494,11 +381,6 @@ export default function AssistantScreen() {
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
-    if (!ragConnected) {
-      setError(`RAG server is offline. Run it locally on port 8001 (${RAG_API_BASE_URL}).`);
-      return;
-    }
-
     const userMessage = {
       id: Date.now().toString(),
       sender: "user",
@@ -532,6 +414,8 @@ export default function AssistantScreen() {
       const nextMessages = [...pendingMessages, aiMessage];
       setMessages(nextMessages);
       setLanguage(response.language);
+      setRagConnected(true);
+      setError("");
       await persistMessages(nextMessages);
     } catch (err) {
       setError(err.message || "RAG assistant is unavailable. Please check your connection.");
@@ -540,7 +424,7 @@ export default function AssistantScreen() {
         {
           id: (Date.now() + 1).toString(),
           sender: "ai",
-          text: "Sorry, I could not reach the agriculture knowledge base right now. Please make sure the RAG server is running.",
+          text: "Sorry, I could not reach the agriculture knowledge base right now. Please check your internet connection and try again.",
           language: "en",
           sources: [],
           createdAt: new Date().toISOString(),
@@ -603,31 +487,17 @@ export default function AssistantScreen() {
         text: message.text,
         language: message.language,
       });
-
-      // Convert blob to base64 and play
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Sound = reader.result.split(",")[1];
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          { uri: `data:audio/mp3;base64,${base64Sound}` }
-        );
-        setSound(newSound);
-        await newSound.playAsync();
-      };
-      reader.readAsDataURL(audioBlob);
+      await playAudioBlob(audioBlob);
     } catch (err) {
       setError(err.message || "Could not generate audio. Please try again.");
     }
   };
 
-  // Cleanup sound on unmount
   useEffect(() => {
     return () => {
-      if (sound) {
-        sound.unloadAsync();
-      }
+      releaseActiveAudio();
     };
-  }, [sound]);
+  }, []);
 
   const loadChatSession = async (session) => {
     try {
@@ -799,31 +669,39 @@ export default function AssistantScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
-      {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => setShowSidebar(!showSidebar)} style={styles.menuButton}>
-            {showSidebar ? <ChevronLeft size={24} color="#065f46" /> : <Menu size={24} color="#065f46" />}
+            {showSidebar ? (
+              <ChevronLeft size={24} color={colors.primaryDark} />
+            ) : (
+              <Menu size={24} color={colors.primaryDark} />
+            )}
           </TouchableOpacity>
 
           <View style={styles.headerText}>
-            <Text style={styles.title}>AgriSense RAG Assistant</Text>
-            <Text style={styles.subtitle}>
-              {ragChecking
-                ? "Connecting to local RAG..."
-                : ragConnected
-                ? `Connected · ${RAG_API_BASE_URL.replace("http://", "")}`
-                : `Offline · ${RAG_API_BASE_URL.replace("http://", "")}`}
-            </Text>
+            <Text style={[styles.title, { color: colors.text }]}>AgriSense Assistant</Text>
+            <TouchableOpacity onPress={verifyRagConnection} disabled={ragChecking}>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+                {ragChecking
+                  ? "Connecting to assistant (server may take up to 1 min)..."
+                  : ragConnected
+                  ? `Connected · ${RAG_API_BASE_URL.replace(/^https?:\/\//, "")}`
+                  : `Tap to retry · ${RAG_API_BASE_URL.replace(/^https?:\/\//, "")}`}
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={startNewChat} style={styles.newChatButton}>
-            <Plus size={20} color="#10b981" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <ThemeToggle size={18} />
+            <TouchableOpacity onPress={startNewChat} style={styles.newChatButton}>
+              <Plus size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -974,8 +852,13 @@ export default function AssistantScreen() {
         </View>
       </View>
 
-      {/* Auth Modal */}
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={handleAuthSuccess} />
+      {AuthModalComponent && (
+        <AuthModalComponent
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={handleAuthSuccess}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -996,6 +879,11 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   menuButton: {
     padding: 8,
@@ -1337,68 +1225,5 @@ const styles = StyleSheet.create({
     color: "#64748b",
     marginTop: 6,
     textAlign: "center",
-  },
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "white",
-    borderRadius: 24,
-    padding: 24,
-    width: "85%",
-    maxWidth: 400,
-  },
-  modalClose: {
-    position: "absolute",
-    right: 16,
-    top: 16,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#065f46",
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  modalSubtitle: {
-    fontSize: 13,
-    color: "#64748b",
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    fontSize: 16,
-  },
-  modalError: {
-    color: "#dc2626",
-    fontSize: 12,
-    marginBottom: 12,
-  },
-  modalButton: {
-    backgroundColor: "#10b981",
-    padding: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  modalButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  modalSwitch: {
-    color: "#10b981",
-    textAlign: "center",
-    marginTop: 16,
-    fontSize: 14,
   },
 });

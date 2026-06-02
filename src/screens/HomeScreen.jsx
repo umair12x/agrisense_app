@@ -1,142 +1,150 @@
-// HomeScreen.jsx
 import React from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
-import { Leaf, Droplets, Brain, Users } from "lucide-react-native";
+import { useNavigation } from "@react-navigation/native";
+import { Leaf, Brain, Users, Sparkles } from "lucide-react-native";
+import { useTheme } from "../theme/ThemeContext";
+import ThemeToggle from "../components/ThemeToggle";
+import { RAG_API_BASE_URL, DISEASE_API_BASE_URL } from "../utils/api";
 
 export default function HomeScreen() {
+  const navigation = useNavigation();
+  const { colors } = useTheme();
+
   const modules = [
-    { 
-      title: "Soil Monitoring", 
-      desc: "Real-time NPK, pH & moisture analysis", 
-      icon: <Droplets size={24} color="#10b981" />,
-      color: "bg-emerald-50 dark:bg-emerald-950/30"
+    {
+      title: "Disease Detection",
+      desc: "Wheat leaf AI analysis with treatment tips",
+      icon: Leaf,
+      route: "DiseaseScreen",
+      tint: colors.primarySoft,
     },
-    { 
-      title: "Disease Detection", 
-      desc: "AI-powered plant disease identification", 
-      icon: <Leaf size={24} color="#059669" />,
-      color: "bg-green-50 dark:bg-green-950/30"
+    {
+      title: "AI Assistant",
+      desc: "Urdu, Punjabi & English farming Q&A",
+      icon: Brain,
+      route: "AssistantScreen",
+      tint: colors.surfaceAlt,
     },
-    { 
-      title: "AI Assistant", 
-      desc: "Smart farming guidance & recommendations", 
-      icon: <Brain size={24} color="#16a34a" />,
-      color: "bg-teal-50 dark:bg-teal-950/30"
-    },
-    { 
-      title: "Farmer Community", 
-      desc: "Connect & share knowledge", 
-      icon: <Users size={24} color="#0d9488" />,
-      color: "bg-cyan-50 dark:bg-cyan-950/30"
+    {
+      title: "Farmer Community",
+      desc: "Share experiences and learn together",
+      icon: Users,
+      route: "CommunityScreen",
+      tint: colors.primaryGlow,
     },
   ];
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Text style={styles.title}>🌾 AgriSense</Text>
-        <Text style={styles.subtitle}>Intelligent Smart Agriculture Platform</Text>
-      </View>
-
-      <View style={styles.heroCard}>
-        <Text style={styles.heroText}>
-          Empowering farmers with IoT sensors, deep learning, and AI-driven insights for sustainable agriculture.
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={[styles.eyebrow, { color: colors.primary }]}>Welcome back</Text>
+            <Text style={[styles.title, { color: colors.text }]}>AgriSense</Text>
+          </View>
+          <ThemeToggle />
+        </View>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          Intelligent agriculture powered by AI disease detection, RAG assistant, and farmer community.
         </Text>
       </View>
 
-      <Text style={styles.sectionTitle}>Core Modules</Text>
-      <View style={styles.modulesGrid}>
-        {modules.map((module, index) => (
-          <TouchableOpacity key={index} style={[styles.moduleCard, module.color]}>
-            <View style={styles.moduleIcon}>
-              {module.icon}
-            </View>
-            <Text style={styles.moduleTitle}>{module.title}</Text>
-            <Text style={styles.moduleDesc}>{module.desc}</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={[styles.heroCard, { backgroundColor: colors.heroGradientStart, borderColor: colors.border }]}>
+        <Sparkles size={22} color={colors.primary} />
+        <Text style={[styles.heroText, { color: colors.text }]}>
+          Upload a leaf photo, ask farming questions in your language, and connect with growers near you.
+        </Text>
       </View>
 
-      <View style={styles.statsCard}>
-        <Text style={styles.statsTitle}>Platform Impact</Text>
-        <View style={styles.statsGrid}>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>90%</Text>
-            <Text style={styles.statLabel}>Disease Accuracy</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>40%</Text>
-            <Text style={styles.statLabel}>Fertilizer Savings</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>24/7</Text>
-            <Text style={styles.statLabel}>AI Support</Text>
-          </View>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>Explore</Text>
+      <View style={styles.modulesGrid}>
+        {modules.map((module) => {
+          const Icon = module.icon;
+          return (
+            <TouchableOpacity
+              key={module.route}
+              style={[styles.moduleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => navigation.navigate(module.route)}
+              activeOpacity={0.85}
+            >
+              <View style={[styles.moduleIconWrap, { backgroundColor: module.tint }]}>
+                <Icon size={26} color={colors.primaryDark} />
+              </View>
+              <Text style={[styles.moduleTitle, { color: colors.text }]}>{module.title}</Text>
+              <Text style={[styles.moduleDesc, { color: colors.textSecondary }]}>{module.desc}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <View style={[styles.statsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.statsTitle, { color: colors.text }]}>Connected services</Text>
+        <View style={[styles.serviceRow, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.serviceLabel, { color: colors.textSecondary }]}>Disease API</Text>
+          <Text style={[styles.serviceValue, { color: colors.primary }]} numberOfLines={1}>
+            {DISEASE_API_BASE_URL.replace("https://", "")}
+          </Text>
+        </View>
+        <View style={styles.serviceRow}>
+          <Text style={[styles.serviceLabel, { color: colors.textSecondary }]}>RAG Assistant</Text>
+          <Text style={[styles.serviceValue, { color: colors.primary }]} numberOfLines={1}>
+            {RAG_API_BASE_URL.replace("https://", "").replace("http://", "")}
+          </Text>
         </View>
       </View>
-
-      <Text style={styles.note}>
-        AgriSense - AI bridges the technological gap in farming communities through data-driven decision making and knowledge sharing.
-      </Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
-  header: { padding: 24, paddingBottom: 16 },
-  title: { fontSize: 32, fontWeight: "800", color: "#065f46", marginBottom: 4 },
-  subtitle: { fontSize: 16, color: "#475569", marginBottom: 8 },
-  heroCard: { 
-    backgroundColor: "#d1fae5", 
-    marginHorizontal: 20, 
-    marginBottom: 24, 
-    padding: 20, 
-    borderRadius: 16,
+  container: { flex: 1 },
+  header: { padding: 24, paddingBottom: 8 },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
+  eyebrow: { fontSize: 13, fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase" },
+  title: { fontSize: 34, fontWeight: "800", marginTop: 4 },
+  subtitle: { fontSize: 15, lineHeight: 22 },
+  heroCard: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+    padding: 20,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#a7f3d0"
+    gap: 12,
   },
-  heroText: { fontSize: 15, color: "#065f46", lineHeight: 22 },
-  sectionTitle: { fontSize: 20, fontWeight: "700", color: "#1e293b", marginHorizontal: 20, marginBottom: 16 },
+  heroText: { fontSize: 15, lineHeight: 22, fontWeight: "500" },
+  sectionTitle: { fontSize: 20, fontWeight: "700", marginHorizontal: 20, marginBottom: 14 },
   modulesGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16, gap: 12 },
-  moduleCard: { 
-    width: "48%", 
-    backgroundColor: "white", 
-    padding: 16, 
-    borderRadius: 12, 
+  moduleCard: {
+    width: "47%",
+    padding: 18,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  moduleIcon: { marginBottom: 12 },
-  moduleTitle: { fontSize: 16, fontWeight: "600", color: "#1e293b", marginBottom: 4 },
-  moduleDesc: { fontSize: 12, color: "#64748b" },
-  statsCard: { 
-    backgroundColor: "white", 
-    marginHorizontal: 20, 
-    marginTop: 24, 
-    marginBottom: 20, 
-    padding: 20, 
-    borderRadius: 16,
+  moduleIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  moduleTitle: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
+  moduleDesc: { fontSize: 12, lineHeight: 17 },
+  statsCard: {
+    marginHorizontal: 20,
+    marginTop: 24,
+    marginBottom: 32,
+    padding: 18,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#e2e8f0"
   },
-  statsTitle: { fontSize: 18, fontWeight: "700", color: "#1e293b", marginBottom: 16 },
-  statsGrid: { flexDirection: "row", justifyContent: "space-around" },
-  statItem: { alignItems: "center" },
-  statNumber: { fontSize: 24, fontWeight: "800", color: "#059669", marginBottom: 4 },
-  statLabel: { fontSize: 12, color: "#64748b", textAlign: "center" },
-  note: { 
-    fontSize: 13, 
-    color: "#64748b", 
-    marginHorizontal: 20, 
-    marginBottom: 30, 
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0"
-  },
+  statsTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
+  serviceRow: { paddingVertical: 10, borderBottomWidth: 1 },
+  serviceLabel: { fontSize: 12, marginBottom: 4 },
+  serviceValue: { fontSize: 11, fontWeight: "600" },
 });

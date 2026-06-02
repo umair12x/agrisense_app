@@ -21,7 +21,12 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import storageService from "../services/storageService";
 import { APP_API_BASE_URL as API_URL } from "../utils/api";
-import { Users, MessageCircle, Heart, Share2, X, Send, Image as ImageIcon, XCircle, Trash2, Camera } from "lucide-react-native";
+import { useTheme } from "../theme/ThemeContext";
+import { useThemedStyles } from "../theme/useThemedStyles";
+import { createCommunityStyles } from "./communityStyles";
+import ThemeToggle from "../components/ThemeToggle";
+import PostVideo from "../components/PostVideo";
+import { Users, MessageCircle, Heart, Share2, X, Send, Image as ImageIcon, XCircle, Trash2, Camera, Video } from "lucide-react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -52,6 +57,8 @@ const timeAgo = (date) => {
 
 // ─── Avatar Component ─────────────────────────────────────────────
 const Avatar = ({ src, name, size = 40, isOnline = false }) => {
+  const styles = useThemedStyles(createCommunityStyles);
+
   const getInitials = () => {
     if (!name) return "?";
     return name.charAt(0).toUpperCase();
@@ -101,19 +108,26 @@ const Avatar = ({ src, name, size = 40, isOnline = false }) => {
 };
 
 // ─── Like Button ─────────────────────────────────────────────
-const LikeButton = ({ liked, count, onPress, loading }) => (
+const LikeButton = ({ liked, count, onPress, loading }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createCommunityStyles);
+
+  return (
   <TouchableOpacity
     onPress={onPress}
     disabled={loading}
     style={[styles.actionButton, liked && styles.actionButtonActive]}
   >
-    <Heart size={20} color={liked ? "#ef4444" : "#64748b"} fill={liked ? "#ef4444" : "none"} />
+    <Heart size={20} color={liked ? colors.danger : colors.textSecondary} fill={liked ? colors.danger : "none"} />
     {count > 0 && <Text style={[styles.actionButtonText, liked && styles.actionButtonTextActive]}>{count}</Text>}
   </TouchableOpacity>
-);
+  );
+};
 
 // ─── Share Button ─────────────────────────────────────────────
 const ShareButton = ({ onShare }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createCommunityStyles);
   const [showTooltip, setShowTooltip] = useState(false);
 
   const handleShare = async () => {
@@ -125,7 +139,7 @@ const ShareButton = ({ onShare }) => {
   return (
     <View style={styles.shareWrapper}>
       <TouchableOpacity onPress={handleShare} style={styles.actionButton}>
-        <Share2 size={20} color="#64748b" />
+        <Share2 size={20} color={colors.textSecondary} />
       </TouchableOpacity>
       {showTooltip && (
         <View style={styles.tooltip}>
@@ -138,6 +152,8 @@ const ShareButton = ({ onShare }) => {
 
 // ─── Comment Item Component ─────────────────────────────────────────────
 const CommentItem = ({ comment, user, onReply, onLike, depth = 0 }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createCommunityStyles);
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [replies, setReplies] = useState(comment.replies || []);
@@ -180,12 +196,12 @@ const CommentItem = ({ comment, user, onReply, onLike, depth = 0 }) => {
                 value={replyText}
                 onChangeText={setReplyText}
                 placeholder="Write a reply..."
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.textMuted}
                 style={styles.replyInput}
                 onSubmitEditing={handleReplySubmit}
               />
               <TouchableOpacity onPress={handleReplySubmit} disabled={!replyText.trim()}>
-                <Send size={16} color={replyText.trim() ? "#10b981" : "#94a3b8"} />
+                <Send size={16} color={replyText.trim() ? colors.primary : colors.textMuted} />
               </TouchableOpacity>
             </View>
           </View>
@@ -208,6 +224,8 @@ const CommentItem = ({ comment, user, onReply, onLike, depth = 0 }) => {
 
 // ─── Post Card Component ─────────────────────────────────────────────
 const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createCommunityStyles);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [commentText, setCommentText] = useState("");
@@ -469,7 +487,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
         
         {user?.id === localPost.userId && (
           <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
-            <Trash2 size={18} color="#ef4444" />
+            <Trash2 size={18} color={colors.danger} />
           </TouchableOpacity>
         )}
       </View>
@@ -488,15 +506,13 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
 
       {/* Media */}
       {localPost.mediaUrl && (
-        <TouchableOpacity style={styles.postMedia}>
+        <View style={styles.postMedia}>
           {localPost.mediaType === "video" ? (
-            <View style={styles.videoPlaceholder}>
-              <Text style={styles.videoText}>🎥 Video Content</Text>
-            </View>
+            <PostVideo uri={localPost.mediaUrl} />
           ) : (
             <Image source={{ uri: localPost.mediaUrl }} style={styles.postImage} resizeMode="cover" />
           )}
-        </TouchableOpacity>
+        </View>
       )}
 
       {/* Tags */}
@@ -538,7 +554,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
         <LikeButton liked={liked} count={localPost.likes?.length || 0} onPress={handleLike} loading={isLiking} />
         
         <TouchableOpacity onPress={openCommentInput} style={styles.actionButton}>
-          <MessageCircle size={20} color="#64748b" />
+          <MessageCircle size={20} color={colors.textSecondary} />
           {comments.length > 0 && <Text style={styles.actionButtonText}>{comments.length}</Text>}
         </TouchableOpacity>
         
@@ -573,7 +589,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
                   value={commentText}
                   onChangeText={setCommentText}
                   placeholder={comments.length > 0 ? "Write a comment..." : "Be the first to comment..."}
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={colors.textMuted}
                   style={styles.commentInput}
                   multiline
                 />
@@ -583,9 +599,9 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
                   style={styles.commentSendButton}
                 >
                   {isPosting ? (
-                    <ActivityIndicator size="small" color="#10b981" />
+                    <ActivityIndicator size="small" color={colors.primary} />
                   ) : (
-                    <Send size={18} color={commentText.trim() ? "#10b981" : "#94a3b8"} />
+                    <Send size={18} color={commentText.trim() ? colors.primary : colors.textMuted} />
                   )}
                 </TouchableOpacity>
               </View>
@@ -603,6 +619,8 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
 
 // ─── Main CommunityScreen Component ─────────────────────────────────────────────
 export default function CommunityScreen({ AuthModalComponent }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createCommunityStyles);
   const [posts, setPosts] = useState([]);
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
@@ -613,6 +631,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
   const [newPostContent, setNewPostContent] = useState("");
   const [newPostMedia, setNewPostMedia] = useState(null);
   const [newPostMediaType, setNewPostMediaType] = useState(null);
+  const [newPostMediaMime, setNewPostMediaMime] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [usingMockData, setUsingMockData] = useState(false);
@@ -620,7 +639,6 @@ export default function CommunityScreen({ AuthModalComponent }) {
   const filters = [
     { id: "all", label: "All Posts" },
     { id: "disease", label: "Disease Help" },
-    { id: "soil", label: "Soil Issues" },
     { id: "tips", label: "Farming Tips" },
     { id: "success", label: "Success Stories" },
   ];
@@ -736,11 +754,12 @@ export default function CommunityScreen({ AuthModalComponent }) {
 
     try {
       if (newPostMedia && !mediaUrl) {
+        const isVideo = newPostMediaType === "video";
         const uploadForm = new FormData();
-        uploadForm.append("image", {
+        uploadForm.append(isVideo ? "video" : "image", {
           uri: newPostMedia,
-          type: "image/jpeg",
-          name: `post_${Date.now()}.jpg`,
+          type: isVideo ? newPostMediaMime || "video/mp4" : newPostMediaMime || "image/jpeg",
+          name: isVideo ? `post_${Date.now()}.mp4` : `post_${Date.now()}.jpg`,
         });
 
         const uploadResponse = await fetch(`${API_URL}/upload`, {
@@ -751,11 +770,11 @@ export default function CommunityScreen({ AuthModalComponent }) {
 
         const uploadData = await uploadResponse.json().catch(() => ({}));
         if (!uploadResponse.ok || !uploadData.success || !uploadData.url) {
-          throw new Error(uploadData.message || "Failed to upload image");
+          throw new Error(uploadData.message || `Failed to upload ${isVideo ? "video" : "image"}`);
         }
 
         mediaUrl = uploadData.url;
-        mediaType = "image";
+        mediaType = isVideo ? "video" : "image";
       }
 
       const response = await fetch(`${API_URL}/posts`, {
@@ -782,6 +801,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
       setNewPostContent("");
       setNewPostMedia(null);
       setNewPostMediaType(null);
+      setNewPostMediaMime(null);
       Alert.alert("Success", "Your post has been shared!");
     } catch (error) {
       console.error("Create post error:", error);
@@ -793,8 +813,16 @@ export default function CommunityScreen({ AuthModalComponent }) {
 
   const setPickedMedia = (asset) => {
     if (!asset?.uri) return;
+    const isVideo = asset.type === "video" || asset.mimeType?.startsWith("video/");
     setNewPostMedia(asset.uri);
-    setNewPostMediaType("image");
+    setNewPostMediaType(isVideo ? "video" : "image");
+    setNewPostMediaMime(asset.mimeType || (isVideo ? "video/mp4" : "image/jpeg"));
+  };
+
+  const clearPickedMedia = () => {
+    setNewPostMedia(null);
+    setNewPostMediaType(null);
+    setNewPostMediaMime(null);
   };
 
   const openCamera = async () => {
@@ -829,9 +857,10 @@ export default function CommunityScreen({ AuthModalComponent }) {
       }
 
       const response = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
+        mediaTypes: ["images", "videos"],
         quality: 0.8,
         allowsEditing: false,
+        videoMaxDuration: 120,
       });
 
       if (!response.canceled && response.assets?.[0]) {
@@ -840,6 +869,30 @@ export default function CommunityScreen({ AuthModalComponent }) {
     } catch (error) {
       console.error("Gallery error:", error);
       Alert.alert("Error", "Failed to open gallery.");
+    }
+  };
+
+  const openVideoPicker = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission required", "Allow gallery access to choose videos for your post.");
+        return;
+      }
+
+      const response = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["videos"],
+        quality: 0.8,
+        allowsEditing: false,
+        videoMaxDuration: 120,
+      });
+
+      if (!response.canceled && response.assets?.[0]) {
+        setPickedMedia(response.assets[0]);
+      }
+    } catch (error) {
+      console.error("Video picker error:", error);
+      Alert.alert("Error", "Failed to open video gallery.");
     }
   };
 
@@ -875,31 +928,32 @@ export default function CommunityScreen({ AuthModalComponent }) {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#10b981" />
-        <Text style={styles.loadingText}>Loading community posts...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading community posts...</Text>
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#10b981"]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
       >
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerRow}>
-            <Users size={28} color="#10b981" />
-            <View>
-              <Text style={styles.title}>Farmer Community</Text>
-              <Text style={styles.subtitle}>Connect, Share & Learn Together</Text>
+            <Users size={28} color={colors.primary} />
+            <View style={styles.headerTextWrap}>
+              <Text style={[styles.title, { color: colors.text }]}>Farmer Community</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Connect, Share & Learn Together</Text>
             </View>
+            <ThemeToggle size={20} />
           </View>
           <View style={styles.statsRow}>
             <Text style={styles.statsText}>
@@ -958,26 +1012,26 @@ export default function CommunityScreen({ AuthModalComponent }) {
 
       {/* Create Post Modal */}
       <Modal visible={showCreateModal} animationType="slide" transparent={false}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Create Post</Text>
+        <View style={[styles.modalContainer, { backgroundColor: colors.modalBg }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Create Post</Text>
             <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-              <X size={24} color="#64748b" />
+              <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
           
           <ScrollView style={styles.modalContent}>
             <View style={styles.modalUserInfo}>
               <Avatar name={user?.name} src={user?.avatar} size={48} />
-              <Text style={styles.modalUserName}>{user?.name || "Guest"}</Text>
+              <Text style={[styles.modalUserName, { color: colors.text }]}>{user?.name || "Guest"}</Text>
             </View>
             
             <TextInput
               value={newPostContent}
               onChangeText={setNewPostContent}
               placeholder="What's happening on your farm? Share an update..."
-              placeholderTextColor="#94a3b8"
-              style={styles.modalInput}
+              placeholderTextColor={colors.textMuted}
+              style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.text }]}
               multiline
               maxLength={500}
             />
@@ -992,36 +1046,38 @@ export default function CommunityScreen({ AuthModalComponent }) {
             {newPostMedia && (
               <View style={styles.modalMediaPreview}>
                 {newPostMediaType === "video" ? (
-                  <View style={styles.videoPreview}>
-                    <Text style={styles.videoPreviewText}>🎥 Video Ready</Text>
-                  </View>
+                  <PostVideo uri={newPostMedia} />
                 ) : (
                   <Image source={{ uri: newPostMedia }} style={styles.modalPreviewImage} />
                 )}
-                <TouchableOpacity onPress={() => setNewPostMedia(null)} style={styles.removeMediaButton}>
-                  <XCircle size={24} color="#ef4444" />
+                <TouchableOpacity onPress={clearPickedMedia} style={styles.removeMediaButton}>
+                  <XCircle size={24} color={colors.danger} />
                 </TouchableOpacity>
               </View>
             )}
             
             <View style={styles.modalActions}>
-              <TouchableOpacity onPress={openCamera} style={styles.mediaButton}>
-                <Camera size={20} color="#10b981" />
-                <Text style={styles.mediaButtonText}>Camera</Text>
+              <TouchableOpacity onPress={openCamera} style={[styles.mediaButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                <Camera size={20} color={colors.primary} />
+                <Text style={[styles.mediaButtonText, { color: colors.text }]}>Camera</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={openGallery} style={styles.mediaButton}>
-                <ImageIcon size={20} color="#10b981" />
-                <Text style={styles.mediaButtonText}>Gallery</Text>
+              <TouchableOpacity onPress={openGallery} style={[styles.mediaButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                <ImageIcon size={20} color={colors.primary} />
+                <Text style={[styles.mediaButtonText, { color: colors.text }]}>Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={openVideoPicker} style={[styles.mediaButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                <Video size={20} color={colors.primary} />
+                <Text style={[styles.mediaButtonText, { color: colors.text }]}>Video</Text>
               </TouchableOpacity>
             </View>
             
             <TouchableOpacity
               onPress={handleCreatePost}
               disabled={uploading || (!newPostContent.trim() && !newPostMedia)}
-              style={[styles.submitButton, (uploading || (!newPostContent.trim() && !newPostMedia)) && styles.submitButtonDisabled]}
+              style={[styles.submitButton, { backgroundColor: colors.primary }, (uploading || (!newPostContent.trim() && !newPostMedia)) && styles.submitButtonDisabled]}
             >
               {uploading ? (
-                <ActivityIndicator size="small" color="white" />
+                <ActivityIndicator size="small" color={colors.onPrimary} />
               ) : (
                 <Text style={styles.submitButtonText}>Post to Community</Text>
               )}
@@ -1042,600 +1098,3 @@ export default function CommunityScreen({ AuthModalComponent }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f8fafc",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: "#64748b",
-  },
-  header: {
-    padding: 20,
-    paddingBottom: 12,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#065f46",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#475569",
-  },
-  statsRow: {
-    marginTop: 8,
-  },
-  statsText: {
-    fontSize: 12,
-    color: "#64748b",
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    alignSelf: "flex-start",
-  },
-  createButton: {
-    backgroundColor: "#10b981",
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 16,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  createButtonText: {
-    color: "white",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  filtersContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  filterChip: {
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
-    marginRight: 10,
-  },
-  filterChipActive: {
-    backgroundColor: "#10b981",
-  },
-  filterText: {
-    fontSize: 14,
-    color: "#64748b",
-  },
-  filterTextActive: {
-    color: "white",
-    fontWeight: "600",
-  },
-  feed: {
-    paddingHorizontal: 16,
-    gap: 20,
-  },
-  postCard: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  postHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    paddingBottom: 12,
-  },
-  postUserInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  postUserNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  postUserName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1e293b",
-  },
-  verifiedBadge: {
-    backgroundColor: "#3b82f6",
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  verifiedText: {
-    color: "white",
-    fontSize: 10,
-    fontWeight: "bold",
-  },
-  postMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 2,
-  },
-  postTime: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  postMetaDot: {
-    fontSize: 12,
-    color: "#cbd5e1",
-  },
-  publicBadge: {
-    backgroundColor: "#d1fae5",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  publicText: {
-    fontSize: 10,
-    color: "#065f46",
-  },
-  deleteButton: {
-    padding: 8,
-  },
-  postContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  postContentText: {
-    fontSize: 15,
-    color: "#334155",
-    lineHeight: 22,
-  },
-  readMore: {
-    fontSize: 14,
-    color: "#10b981",
-    fontWeight: "600",
-    marginTop: 8,
-  },
-  postMedia: {
-    marginBottom: 12,
-  },
-  postImage: {
-    width: "100%",
-    height: 280,
-    backgroundColor: "#f1f5f9",
-  },
-  videoPlaceholder: {
-    width: "100%",
-    height: 280,
-    backgroundColor: "#1e293b",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  videoText: {
-    color: "white",
-    fontSize: 18,
-  },
-  tagsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 8,
-  },
-  tag: {
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  tagText: {
-    fontSize: 11,
-    color: "#64748b",
-  },
-  engagementStats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-  },
-  likesInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  likeIconContainer: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "#ef4444",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  likeIcon: {
-    color: "white",
-    fontSize: 10,
-  },
-  likesCount: {
-    fontSize: 13,
-    color: "#64748b",
-  },
-  commentsCount: {
-    fontSize: 13,
-    color: "#10b981",
-    fontWeight: "500",
-  },
-  postActions: {
-    flexDirection: "row",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-    gap: 8,
-  },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 24,
-    backgroundColor: "#f8fafc",
-    flex: 1,
-    justifyContent: "center",
-  },
-  actionButtonActive: {
-    backgroundColor: "#fef2f2",
-  },
-  actionButtonText: {
-    fontSize: 14,
-    color: "#64748b",
-  },
-  actionButtonTextActive: {
-    color: "#ef4444",
-  },
-  shareWrapper: {
-    flex: 1,
-    position: "relative",
-  },
-  tooltip: {
-    position: "absolute",
-    bottom: 50,
-    left: "50%",
-    transform: [{ translateX: -50 }],
-    backgroundColor: "#1e293b",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  tooltipText: {
-    color: "white",
-    fontSize: 12,
-  },
-  commentsSection: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-    backgroundColor: "#fafbfc",
-  },
-  commentItem: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
-  },
-  commentItemNested: {
-    marginLeft: 44,
-    marginTop: 12,
-  },
-  commentContent: {
-    flex: 1,
-  },
-  commentBubble: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  commentHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  commentUserName: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#1e293b",
-  },
-  commentTime: {
-    fontSize: 10,
-    color: "#94a3b8",
-  },
-  commentText: {
-    fontSize: 14,
-    color: "#334155",
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  commentFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-  },
-  commentLikeText: {
-    fontSize: 11,
-    color: "#64748b",
-  },
-  commentReplyText: {
-    fontSize: 11,
-    color: "#10b981",
-    fontWeight: "600",
-  },
-  replyContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 12,
-  },
-  replyInputWrapper: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  replyInput: {
-    flex: 1,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: "#1e293b",
-  },
-  commentInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 16,
-  },
-  commentInputWrapper: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-  },
-  commentInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: "#1e293b",
-    maxHeight: 100,
-  },
-  commentSendButton: {
-    padding: 8,
-  },
-  signInPrompt: {
-    alignItems: "center",
-    paddingVertical: 16,
-  },
-  signInText: {
-    color: "#10b981",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  avatar: {
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  avatarImage: {
-    width: "100%",
-    height: "100%",
-  },
-  avatarText: {
-    color: "white",
-    fontWeight: "700",
-  },
-  onlineDot: {
-    position: "absolute",
-    backgroundColor: "#10b981",
-    borderWidth: 2,
-    borderColor: "white",
-  },
-  emptyContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  emptyEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1e293b",
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: "#64748b",
-    textAlign: "center",
-    paddingHorizontal: 40,
-  },
-  footer: {
-    paddingVertical: 20,
-    alignItems: "center",
-  },
-  footerText: {
-    fontSize: 12,
-    color: "#94a3b8",
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "white",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#1e293b",
-  },
-  modalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  modalUserInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 20,
-  },
-  modalUserName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1e293b",
-  },
-  modalInput: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 16,
-    padding: 16,
-    fontSize: 16,
-    color: "#1e293b",
-    minHeight: 120,
-    textAlignVertical: "top",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    marginBottom: 8,
-  },
-  charCounter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-    marginBottom: 16,
-  },
-  charDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#10b981",
-  },
-  charDotWarning: {
-    backgroundColor: "#ef4444",
-  },
-  charText: {
-    fontSize: 12,
-    color: "#94a3b8",
-  },
-  charTextWarning: {
-    color: "#ef4444",
-  },
-  modalMediaPreview: {
-    position: "relative",
-    marginBottom: 20,
-  },
-  modalPreviewImage: {
-    width: "100%",
-    height: 200,
-    borderRadius: 16,
-  },
-  videoPreview: {
-    width: "100%",
-    height: 200,
-    backgroundColor: "#1e293b",
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  videoPreviewText: {
-    color: "white",
-    fontSize: 16,
-  },
-  removeMediaButton: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    backgroundColor: "white",
-    borderRadius: 20,
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 24,
-  },
-  mediaButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: "#f8fafc",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  mediaButtonText: {
-    fontSize: 14,
-    color: "#10b981",
-    fontWeight: "500",
-  },
-  submitButton: {
-    backgroundColor: "#10b981",
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: "center",
-  },
-  submitButtonDisabled: {
-    backgroundColor: "#94a3b8",
-  },
-  submitButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-});
