@@ -3,18 +3,16 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Modal,
   Alert,
   Platform,
-  FlatList,
   KeyboardAvoidingView,
-  PermissionsAndroid,
+  Keyboard,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { playAudioBlob, releaseActiveAudio } from "../utils/playAudio";
 import storageService from "../services/storageService";
 import {
@@ -38,12 +36,12 @@ import {
   Languages,
   Plus,
   Trash2,
-  Mic,
-  X,
   Menu,
   ChevronLeft,
 } from "lucide-react-native";
 import { useTheme } from "../theme/ThemeContext";
+import { useThemedStyles } from "../theme/useThemedStyles";
+import { createAssistantStyles } from "./assistantStyles";
 import ThemeToggle from "../components/ThemeToggle";
 
 const LOCAL_SESSIONS_KEY = "assistant_local_sessions";
@@ -73,76 +71,125 @@ const normalizeMessages = (items = []) =>
   }));
 
 // Chat Message Component
-const ChatMessage = ({ message, onSpeak, onTranslate, translating, translation }) => {
+const ChatMessage = ({
+  message,
+  onSpeak,
+  onTranslate,
+  translating,
+  translation,
+  activeTranslationLang,
+  styles,
+  colors,
+}) => {
   const isUser = message.sender === "user";
-  const language = getLanguage(message.language || "en");
   const hasReliableSources = !isUser && message.sources && message.sources.length > 0;
-  const displayText = translation || message.text;
+  const isShowingTranslation = Boolean(activeTranslationLang && translation);
+  const displayText = isShowingTranslation ? translation : message.text;
 
   return (
     <View style={[styles.messageWrapper, isUser ? styles.userWrapper : styles.botWrapper]}>
+      {!isUser && (
+        <View style={styles.avatarCircle}>
+          <Bot size={18} color={colors.primary} />
+        </View>
+      )}
       <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.botBubble]}>
-        <View style={styles.messageHeader}>
-          {isUser ? (
-            <User size={14} color="#10b981" />
-          ) : (
-            <Bot size={14} color="#10b981" />
-          )}
-          <Text style={styles.senderName}>{isUser ? "You" : "AgriSense AI"}</Text>
+        <View style={styles.messageMeta}>
+          <Text style={[styles.senderLabel, isUser && styles.senderLabelUser]}>
+            {isUser ? "You" : "AgriSense AI"}
+          </Text>
+          <Text style={styles.messageTime}>
+            {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </Text>
         </View>
 
         {!isUser && !hasReliableSources && (
-          <View style={styles.warningBadge}>
-            <Text style={styles.warningText}>💡 General Knowledge (No Source Documents)</Text>
+          <View style={styles.metaBadgeWarning}>
+            <Text style={styles.metaBadgeWarningText}>General Knowledge</Text>
           </View>
         )}
 
         {!isUser && hasReliableSources && (
-          <View style={styles.sourceBadge}>
-            <Text style={styles.sourceText}>✅ From OCR Documents</Text>
+          <View style={styles.metaBadgeSource}>
+            <BookOpen size={10} color={colors.primaryDark} />
+            <Text style={styles.metaBadgeSourceText}>Document Verified</Text>
           </View>
         )}
 
-        <Text style={[styles.messageText, !isUser && hasReliableSources && styles.sourceMessageText]}>
+        <Text
+          style={[
+            styles.messageText,
+            isUser && styles.messageTextUser,
+            !isUser && hasReliableSources && styles.messageTextSource,
+          ]}
+        >
           {displayText}
         </Text>
 
         {!isUser && (
-          <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.actionButton} onPress={() => onSpeak({ ...message, text: displayText })}>
-              <Volume2 size={14} color="#059669" />
-              <Text style={styles.actionButtonText}>Listen</Text>
-            </TouchableOpacity>
-
-            {LANGUAGES.filter((lang) => lang.code !== message.language).map((lang) => (
+          <View style={styles.actionRow}>
+            <Text style={styles.actionRowLabel}>Translate reply</Text>
+            <View style={styles.actionPillRow}>
               <TouchableOpacity
-                key={lang.code}
-                style={styles.actionButton}
-                onPress={() => onTranslate(message.id, lang.code)}
-                disabled={translating === message.id}
+                style={styles.actionPill}
+                onPress={() => onSpeak({ ...message, text: displayText })}
               >
-                <Languages size={14} color="#6b7280" />
-                <Text style={styles.actionButtonText}>
-                  {translating === message.id ? "..." : lang.label}
-                </Text>
+                <Volume2 size={13} color={colors.primary} />
+                <Text style={styles.actionPillText}>Listen</Text>
               </TouchableOpacity>
-            ))}
+
+              {LANGUAGES.filter((lang) => lang.code !== message.language).map((lang) => {
+                const isActive = activeTranslationLang === lang.code;
+                const isLoadingThis = translating === message.id;
+                return (
+                  <TouchableOpacity
+                    key={lang.code}
+                    style={[styles.actionPill, isActive && styles.actionPillActive]}
+                    onPress={() => onTranslate(message.id, lang.code)}
+                    disabled={isLoadingThis}
+                  >
+                    <Languages
+                      size={13}
+                      color={isActive ? colors.primaryDark : colors.textSecondary}
+                    />
+                    <Text style={[styles.actionPillText, isActive && styles.actionPillTextActive]}>
+                      {isLoadingThis && !isActive
+                        ? "..."
+                        : isActive
+                        ? `${lang.label} ✓`
+                        : lang.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {isShowingTranslation && (
+              <TouchableOpacity
+                style={styles.showOriginalPill}
+                onPress={() => onTranslate(message.id, activeTranslationLang)}
+              >
+                <Text style={styles.showOriginalText}>Show original</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
         {!isUser && message.sources?.length > 0 && (
-          <View style={styles.sourcesContainer}>
-            <Text style={styles.sourcesTitle}>📄 Sources:</Text>
-            <View style={styles.sourcesList}>
-              {message.sources.slice(0, 5).map((source, idx) => (
-                <View key={idx} style={styles.sourceItem}>
-                  <Text style={styles.sourceItemText}>
-                    {source.source} p.{source.page}
+          <View style={styles.sourcesPanel}>
+            <Text style={styles.sourcesPanelTitle}>Sources</Text>
+            <View style={styles.sourcesGrid}>
+              {message.sources.slice(0, 4).map((source, idx) => (
+                <View key={idx} style={styles.sourceChip}>
+                  <Text style={styles.sourceChipText} numberOfLines={1}>
+                    {source.source}
                   </Text>
+                  <Text style={styles.sourceChipPage}>p.{source.page}</Text>
                 </View>
               ))}
-              {message.sources.length > 5 && (
-                <Text style={styles.moreSources}>+{message.sources.length - 5} more</Text>
+              {message.sources.length > 4 && (
+                <View style={styles.sourceChipMore}>
+                  <Text style={styles.sourceChipMoreText}>+{message.sources.length - 4}</Text>
+                </View>
               )}
             </View>
           </View>
@@ -155,6 +202,9 @@ const ChatMessage = ({ message, onSpeak, onTranslate, translating, translation }
 // Main Assistant Component
 export default function AssistantScreen({ AuthModalComponent }) {
   const { colors } = useTheme();
+  const styles = useThemedStyles(createAssistantStyles);
+  const insets = useSafeAreaInsets();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [inputLanguage, setInputLanguage] = useState("ur");
@@ -171,7 +221,9 @@ export default function AssistantScreen({ AuthModalComponent }) {
   const [error, setError] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [translations, setTranslations] = useState({});
+  const [responseTranslations, setResponseTranslations] = useState({});
+  const [activeResponseLang, setActiveResponseLang] = useState({});
+  const [showInputTools, setShowInputTools] = useState(true);
   const [ragConnected, setRagConnected] = useState(false);
   const [ragChecking, setRagChecking] = useState(true);
   const scrollViewRef = useRef();
@@ -198,6 +250,22 @@ export default function AssistantScreen({ AuthModalComponent }) {
   useEffect(() => {
     verifyRagConnection();
   }, [verifyRagConnection]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const onShow = () => {
+      setKeyboardVisible(true);
+      setShowInputTools(false);
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 80);
+    };
+    const showSub = Keyboard.addListener(showEvent, onShow);
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (ragConnected || ragChecking) return undefined;
@@ -375,7 +443,8 @@ export default function AssistantScreen({ AuthModalComponent }) {
     setInput("");
     setLanguage("ur");
     setShowSidebar(false);
-    setTranslations({});
+    setResponseTranslations({});
+    setActiveResponseLang({});
   };
 
   const sendMessage = async () => {
@@ -437,7 +506,19 @@ export default function AssistantScreen({ AuthModalComponent }) {
 
   const handleTranslateMessage = async (messageId, targetLanguage) => {
     const message = messages.find((item) => item.id === messageId);
-    if (!message) return;
+    if (!message || message.sender !== "ai") return;
+
+    const cacheKey = `${messageId}_${targetLanguage}`;
+
+    if (activeResponseLang[messageId] === targetLanguage) {
+      setActiveResponseLang((prev) => ({ ...prev, [messageId]: null }));
+      return;
+    }
+
+    if (responseTranslations[cacheKey]) {
+      setActiveResponseLang((prev) => ({ ...prev, [messageId]: targetLanguage }));
+      return;
+    }
 
     setTranslating(messageId);
     setError("");
@@ -448,10 +529,13 @@ export default function AssistantScreen({ AuthModalComponent }) {
         language: targetLanguage,
       });
 
-      const key = `${messageId}_${targetLanguage}`;
-      setTranslations((prev) => ({ ...prev, [key]: result.text || message.text }));
+      setResponseTranslations((prev) => ({
+        ...prev,
+        [cacheKey]: result.text || message.text,
+      }));
+      setActiveResponseLang((prev) => ({ ...prev, [messageId]: targetLanguage }));
     } catch (err) {
-      setError(err.message || "Translation failed.");
+      setError(err.message || "Could not translate this reply.");
     } finally {
       setTranslating(null);
     }
@@ -507,7 +591,8 @@ export default function AssistantScreen({ AuthModalComponent }) {
         setInputLanguage(session.language || "ur");
         setSessionId(session.id);
         setShowSidebar(false);
-        setTranslations({});
+        setResponseTranslations({});
+        setActiveResponseLang({});
         await storageService.setItem(
           LOCAL_MESSAGES_KEY,
           JSON.stringify({
@@ -528,7 +613,8 @@ export default function AssistantScreen({ AuthModalComponent }) {
         setInputLanguage(data.session.language || "ur");
         setSessionId(session.id);
         setShowSidebar(false);
-        setTranslations({});
+        setResponseTranslations({});
+        setActiveResponseLang({});
       }
     } catch (err) {
       setError("Could not load that saved chat.");
@@ -624,26 +710,35 @@ export default function AssistantScreen({ AuthModalComponent }) {
   const Sidebar = () => (
     <View style={styles.sidebar}>
       <View style={styles.sidebarHeader}>
-        <Text style={styles.sidebarTitle}>Saved Chats</Text>
+        <View style={styles.sidebarBrand}>
+          <Text style={styles.sidebarTitle}>Chat History</Text>
+          <TouchableOpacity onPress={() => setShowSidebar(false)} style={styles.sidebarClose}>
+            <ChevronLeft size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
         {!user ? (
-          <TouchableOpacity onPress={() => setShowAuthModal(true)}>
-            <Text style={styles.loginText}>Login to save</Text>
+          <TouchableOpacity style={styles.sidebarAuthPill} onPress={() => setShowAuthModal(true)}>
+            <Text style={styles.sidebarAuthText}>Login to save history</Text>
           </TouchableOpacity>
         ) : (
-          <>
+          <View style={styles.sidebarUserRow}>
             <Text style={styles.userNameText} numberOfLines={1}>
               {user.name}
             </Text>
-            <TouchableOpacity onPress={handleLogout}>
+            <TouchableOpacity style={styles.logoutPill} onPress={handleLogout}>
               <Text style={styles.logoutText}>Logout</Text>
             </TouchableOpacity>
-          </>
+          </View>
         )}
       </View>
 
-      <ScrollView style={styles.sidebarList}>
+      <ScrollView style={styles.sidebarList} showsVerticalScrollIndicator={false}>
         {savedSessions.length === 0 && (
-          <Text style={styles.noSessionsText}>No saved chats yet.</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateIcon}>💬</Text>
+            <Text style={styles.noSessionsText}>No saved chats yet.</Text>
+            <Text style={styles.emptyStateSub}>Start a conversation to see it here.</Text>
+          </View>
         )}
         {savedSessions.map((session) => (
           <View key={session.id} style={styles.sessionItemWrapper}>
@@ -654,12 +749,15 @@ export default function AssistantScreen({ AuthModalComponent }) {
               <Text style={styles.sessionTitle} numberOfLines={2}>
                 {session.title}
               </Text>
+              <Text style={styles.sessionDate}>
+                {session.updatedAt ? new Date(session.updatedAt).toLocaleDateString() : ""}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.deleteSessionButton}
               onPress={() => handleDeleteChat(session.id)}
             >
-              <Trash2 size={16} color="#ef4444" />
+              <Trash2 size={16} color={colors.danger} />
             </TouchableOpacity>
           </View>
         ))}
@@ -667,39 +765,52 @@ export default function AssistantScreen({ AuthModalComponent }) {
     </View>
   );
 
+  const tabBarOffset = 72 + insets.bottom;
+
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-    >
-      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+    <View style={styles.container}>
+      <View style={styles.header}>
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => setShowSidebar(!showSidebar)} style={styles.menuButton}>
+          <TouchableOpacity onPress={() => setShowSidebar(!showSidebar)} style={styles.menuButton} hitSlop={12}>
             {showSidebar ? (
-              <ChevronLeft size={24} color={colors.primaryDark} />
+              <ChevronLeft size={22} color={colors.text} />
             ) : (
-              <Menu size={24} color={colors.primaryDark} />
+              <Menu size={22} color={colors.text} />
             )}
           </TouchableOpacity>
 
-          <View style={styles.headerText}>
-            <Text style={[styles.title, { color: colors.text }]}>AgriSense Assistant</Text>
-            <TouchableOpacity onPress={verifyRagConnection} disabled={ragChecking}>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+          <View style={styles.headerCenter}>
+            <View style={styles.brandRow}>
+              <View style={styles.brandIconCircle}>
+                <Sparkles size={16} color={colors.onPrimary} />
+              </View>
+              <Text style={styles.title}>AgriSense</Text>
+            </View>
+            <TouchableOpacity onPress={verifyRagConnection} disabled={ragChecking} style={styles.statusPill}>
+              <View
+                style={[
+                  styles.statusDot,
+                  ragChecking
+                    ? styles.statusDotChecking
+                    : ragConnected
+                    ? styles.statusDotOnline
+                    : styles.statusDotOffline,
+                ]}
+              />
+              <Text style={styles.statusText}>
                 {ragChecking
-                  ? "Connecting to assistant (server may take up to 1 min)..."
+                  ? "Waking up..."
                   : ragConnected
-                  ? `Connected · ${RAG_API_BASE_URL.replace(/^https?:\/\//, "")}`
-                  : `Tap to retry · ${RAG_API_BASE_URL.replace(/^https?:\/\//, "")}`}
+                  ? "Assistant Online"
+                  : "Offline — Tap to retry"}
               </Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.headerActions}>
             <ThemeToggle size={18} />
-            <TouchableOpacity onPress={startNewChat} style={styles.newChatButton}>
-              <Plus size={20} color={colors.primary} />
+            <TouchableOpacity onPress={startNewChat} style={styles.iconButton} hitSlop={8}>
+              <Plus size={22} color={colors.primary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -707,20 +818,37 @@ export default function AssistantScreen({ AuthModalComponent }) {
 
       {/* Main Content */}
       <View style={styles.mainContainer}>
-        {/* Sidebar */}
-        {showSidebar && <Sidebar />}
+        {/* Sidebar Overlay */}
+        {showSidebar && (
+          <>
+            <TouchableOpacity
+              style={styles.backdrop}
+              activeOpacity={1}
+              onPress={() => setShowSidebar(false)}
+            />
+            <Sidebar />
+          </>
+        )}
 
         {/* Chat Area */}
-        <View style={[styles.chatArea, showSidebar && styles.chatAreaWithSidebar]}>
-          {/* Messages */}
+        <KeyboardAvoidingView
+          style={styles.chatArea}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={tabBarOffset}
+        >
           <ScrollView
             style={styles.chatContainer}
             ref={scrollViewRef}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
             onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
           >
             {messages.map((message) => {
-              const translationKey = `${message.id}_${inputLanguage}`;
-              const translation = translations[translationKey];
+              const activeLang = activeResponseLang[message.id];
+              const translation =
+                activeLang && message.sender === "ai"
+                  ? responseTranslations[`${message.id}_${activeLang}`]
+                  : null;
 
               return (
                 <ChatMessage
@@ -730,14 +858,17 @@ export default function AssistantScreen({ AuthModalComponent }) {
                   onTranslate={handleTranslateMessage}
                   translating={translating}
                   translation={translation}
+                  activeTranslationLang={activeLang}
+                  styles={styles}
+                  colors={colors}
                 />
               );
             })}
 
             {loading ? (
               <View key="assistant-loading" style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color="#10b981" />
-                <Text style={styles.loadingText}>Searching OCR documents and asking LLM...</Text>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingText}>Thinking...</Text>
               </View>
             ) : null}
           </ScrollView>
@@ -749,79 +880,18 @@ export default function AssistantScreen({ AuthModalComponent }) {
             </View>
           )}
 
-          {/* Input Area */}
-          <View style={styles.inputArea}>
-            {/* Language Controls */}
-            <View style={styles.languageControls}>
-              <View style={styles.languageRow}>
-                <Text style={styles.languageLabel}>Input:</Text>
-                <View style={styles.languageChips}>
-                  {LANGUAGES.map((lang) => (
-                    <TouchableOpacity
-                      key={lang.code}
-                      style={[styles.languageChip, inputLanguage === lang.code && styles.languageChipActive]}
-                      onPress={() => setInputLanguage(lang.code)}
-                    >
-                      <Text
-                        style={[
-                          styles.languageChipText,
-                          inputLanguage === lang.code && styles.languageChipTextActive,
-                        ]}
-                      >
-                        {lang.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.languageRow}>
-                <Text style={styles.languageLabel}>Translate to:</Text>
-                <View style={styles.languageChips}>
-                  {LANGUAGES.map((lang) => (
-                    <TouchableOpacity
-                      key={lang.code}
-                      style={[
-                        styles.languageChip,
-                        inputTargetLanguage === lang.code && styles.languageChipActive,
-                      ]}
-                      onPress={() => setInputTargetLanguage(lang.code)}
-                    >
-                      <Text
-                        style={[
-                          styles.languageChipText,
-                          inputTargetLanguage === lang.code && styles.languageChipTextActive,
-                        ]}
-                      >
-                        {lang.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.translateButton, (!input.trim() || inputTranslating) && styles.translateButtonDisabled]}
-                onPress={translateInput}
-                disabled={!input.trim() || inputTranslating}
-              >
-                <Languages size={16} color="#10b981" />
-                <Text style={styles.translateButtonText}>
-                  {inputTranslating ? "Translating..." : "Translate Input"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Input Row */}
+          {/* Input Area — compose first, language tools below */}
+          <View style={styles.inputSurface}>
             <View style={styles.inputRow}>
               <TextInput
                 style={[styles.input, { textAlign: getLanguage(inputLanguage).dir === "rtl" ? "right" : "left" }]}
                 value={input}
                 onChangeText={setInput}
                 placeholder="اپنا سوال لکھیں... Type your farming question..."
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.textMuted}
                 multiline
-                editable={!loading}
+                editable={!loading && !inputTranslating}
+                onFocus={() => setShowInputTools(true)}
               />
 
               <TouchableOpacity
@@ -829,27 +899,121 @@ export default function AssistantScreen({ AuthModalComponent }) {
                 onPress={sendMessage}
                 disabled={!input.trim() || loading}
               >
-                <Send size={20} color="white" />
+                <Send size={20} color={colors.onPrimary} />
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </View>
 
-      {/* Features Card */}
-      <View style={styles.featuresCard}>
-        <View style={styles.feature}>
-          <BookOpen size={20} color="#10b981" />
-          <Text style={styles.featureText}>OCR Documents</Text>
-        </View>
-        <View style={styles.feature}>
-          <Sparkles size={20} color="#f59e0b" />
-          <Text style={styles.featureText}>AI-Powered</Text>
-        </View>
-        <View style={styles.feature}>
-          <Languages size={20} color="#8b5cf6" />
-          <Text style={styles.featureText}>Multi-Language</Text>
-        </View>
+            <TouchableOpacity
+              style={styles.inputToolsToggle}
+              onPress={() => setShowInputTools((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <Languages size={14} color={colors.primary} />
+              <Text style={styles.inputToolsToggleText}>
+                {showInputTools ? "Hide" : "Show"} message language & draft translation
+              </Text>
+            </TouchableOpacity>
+
+            {showInputTools && (
+              <View style={styles.inputToolsPanel}>
+                <Text style={styles.inputToolsHint}>
+                  These options only change what you type — use buttons on each AI reply to translate answers.
+                </Text>
+
+                <View style={styles.inputToolBlock}>
+                  <Text style={styles.langLabel}>Writing language</Text>
+                  <View style={styles.langOptions}>
+                    {LANGUAGES.map((lang) => (
+                      <TouchableOpacity
+                        key={`write-${lang.code}`}
+                        style={[styles.langOption, inputLanguage === lang.code && styles.langOptionActive]}
+                        onPress={() => setInputLanguage(lang.code)}
+                      >
+                        <Text
+                          style={[
+                            styles.langOptionText,
+                            inputLanguage === lang.code && styles.langOptionTextActive,
+                          ]}
+                        >
+                          {lang.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.inputToolBlock}>
+                  <Text style={styles.langLabel}>Translate my draft to</Text>
+                  <View style={styles.langOptions}>
+                    {LANGUAGES.map((lang) => (
+                      <TouchableOpacity
+                        key={`draft-${lang.code}`}
+                        style={[
+                          styles.langOption,
+                          inputTargetLanguage === lang.code && styles.langOptionActive,
+                        ]}
+                        onPress={() => setInputTargetLanguage(lang.code)}
+                      >
+                        <Text
+                          style={[
+                            styles.langOptionText,
+                            inputTargetLanguage === lang.code && styles.langOptionTextActive,
+                          ]}
+                        >
+                          {lang.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.translateDraftButton,
+                      (!input.trim() || inputTranslating) && styles.translateDraftButtonDisabled,
+                    ]}
+                    onPress={translateInput}
+                    disabled={!input.trim() || inputTranslating}
+                  >
+                    {inputTranslating ? (
+                      <ActivityIndicator size="small" color={colors.onPrimary} />
+                    ) : (
+                      <>
+                        <Languages size={14} color={colors.onPrimary} />
+                        <Text style={styles.translateDraftButtonText}>
+                          Translate draft to {getLanguage(inputTargetLanguage).label}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {!keyboardVisible && (
+            <View style={styles.trustBar}>
+              <View style={styles.trustItem}>
+                <View style={styles.trustIconBg}>
+                  <BookOpen size={18} color={colors.primary} />
+                </View>
+                <Text style={styles.trustText}>OCR Docs</Text>
+              </View>
+              <View style={styles.trustDivider} />
+              <View style={styles.trustItem}>
+                <View style={styles.trustIconBg}>
+                  <Sparkles size={18} color={colors.warning} />
+                </View>
+                <Text style={styles.trustText}>AI Powered</Text>
+              </View>
+              <View style={styles.trustDivider} />
+              <View style={styles.trustItem}>
+                <View style={styles.trustIconBg}>
+                  <Languages size={18} color={colors.accent} />
+                </View>
+                <Text style={styles.trustText}>Multi-Language</Text>
+              </View>
+            </View>
+          )}
+        </KeyboardAvoidingView>
       </View>
 
       {AuthModalComponent && (
@@ -859,371 +1023,6 @@ export default function AssistantScreen({ AuthModalComponent }) {
           onSuccess={handleAuthSuccess}
         />
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f0fdf4",
-  },
-  header: {
-    paddingTop: Platform.OS === "ios" ? 60 : 20,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#d1fae5",
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  menuButton: {
-    padding: 8,
-    marginRight: 8,
-  },
-  newChatButton: {
-    padding: 8,
-  },
-  headerText: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#065f46",
-  },
-  subtitle: {
-    fontSize: 11,
-    color: "#64748b",
-    marginTop: 2,
-  },
-  mainContainer: {
-    flex: 1,
-    flexDirection: "row",
-  },
-  sidebar: {
-    width: 280,
-    backgroundColor: "white",
-    borderRightWidth: 1,
-    borderRightColor: "#d1fae5",
-  },
-  sidebarHeader: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-  },
-  sidebarTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#065f46",
-    marginBottom: 8,
-  },
-  loginText: {
-    fontSize: 12,
-    color: "#10b981",
-  },
-  userNameText: {
-    fontSize: 12,
-    color: "#64748b",
-    marginBottom: 4,
-  },
-  logoutText: {
-    fontSize: 12,
-    color: "#ef4444",
-  },
-  sidebarList: {
-    flex: 1,
-  },
-  noSessionsText: {
-    padding: 16,
-    fontSize: 14,
-    color: "#9ca3af",
-    textAlign: "center",
-  },
-  sessionItemWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-  },
-  sessionItem: {
-    flex: 1,
-    padding: 12,
-  },
-  sessionTitle: {
-    fontSize: 13,
-    color: "#334155",
-  },
-  deleteSessionButton: {
-    padding: 12,
-  },
-  chatArea: {
-    flex: 1,
-  },
-  chatAreaWithSidebar: {
-    width: 0,
-  },
-  chatContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  messageWrapper: {
-    marginBottom: 16,
-  },
-  userWrapper: {
-    alignItems: "flex-end",
-  },
-  botWrapper: {
-    alignItems: "flex-start",
-  },
-  messageBubble: {
-    maxWidth: "85%",
-    padding: 12,
-    borderRadius: 16,
-  },
-  userBubble: {
-    backgroundColor: "#10b981",
-  },
-  botBubble: {
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#d1fae5",
-  },
-  messageHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-    gap: 6,
-  },
-  senderName: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#065f46",
-  },
-  warningBadge: {
-    backgroundColor: "#fef3c7",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: 8,
-    alignSelf: "flex-start",
-  },
-  warningText: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#d97706",
-  },
-  sourceBadge: {
-    backgroundColor: "#d1fae5",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: 8,
-    alignSelf: "flex-start",
-  },
-  sourceText: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#059669",
-  },
-  messageText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#1f2937",
-  },
-  sourceMessageText: {
-    color: "#065f46",
-  },
-  actionButtons: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
-  },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  actionButtonText: {
-    fontSize: 11,
-    color: "#6b7280",
-  },
-  sourcesContainer: {
-    marginTop: 8,
-    padding: 8,
-    backgroundColor: "#f0fdf4",
-    borderRadius: 8,
-  },
-  sourcesTitle: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#059669",
-    marginBottom: 4,
-  },
-  sourcesList: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  sourceItem: {
-    backgroundColor: "white",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#a7f3d0",
-  },
-  sourceItemText: {
-    fontSize: 10,
-    color: "#374151",
-  },
-  moreSources: {
-    fontSize: 10,
-    color: "#6b7280",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  loadingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    marginTop: 8,
-  },
-  loadingText: {
-    marginLeft: 8,
-    fontSize: 12,
-    color: "#6b7280",
-  },
-  errorContainer: {
-    margin: 16,
-    marginBottom: 0,
-    padding: 12,
-    backgroundColor: "#fef2f2",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#fecaca",
-  },
-  errorText: {
-    fontSize: 12,
-    color: "#dc2626",
-  },
-  inputArea: {
-    padding: 16,
-    backgroundColor: "white",
-    borderTopWidth: 1,
-    borderTopColor: "#d1fae5",
-  },
-  languageControls: {
-    marginBottom: 12,
-    gap: 8,
-  },
-  languageRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  languageLabel: {
-    fontSize: 12,
-    color: "#64748b",
-    width: 70,
-  },
-  languageChips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  languageChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 16,
-    backgroundColor: "#f1f5f9",
-  },
-  languageChipActive: {
-    backgroundColor: "#10b981",
-  },
-  languageChipText: {
-    fontSize: 11,
-    color: "#475569",
-  },
-  languageChipTextActive: {
-    color: "white",
-  },
-  translateButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#f1f5f9",
-    borderRadius: 20,
-    alignSelf: "flex-start",
-  },
-  translateButtonDisabled: {
-    opacity: 0.5,
-  },
-  translateButtonText: {
-    fontSize: 12,
-    color: "#10b981",
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 12,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 15,
-    maxHeight: 100,
-    textAlignVertical: "top",
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#10b981",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sendButtonDisabled: {
-    opacity: 0.5,
-  },
-  featuresCard: {
-    backgroundColor: "white",
-    margin: 16,
-    marginTop: 8,
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#d1fae5",
-    flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  feature: {
-    alignItems: "center",
-    flex: 1,
-  },
-  featureText: {
-    fontSize: 11,
-    color: "#64748b",
-    marginTop: 6,
-    textAlign: "center",
-  },
-});

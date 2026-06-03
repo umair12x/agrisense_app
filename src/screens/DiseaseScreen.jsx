@@ -16,30 +16,30 @@ import { predictDisease, getDiseaseInfo } from "../utils/api";
 import { useTheme } from "../theme/ThemeContext";
 import { useThemedStyles } from "../theme/useThemedStyles";
 import { createDiseaseStyles } from "./diseaseStyles";
-import ThemeToggle from "../components/ThemeToggle";
+import ScreenHero from "../components/ScreenHero";
 
 const TRUST_FEATURES = [
   {
     icon: "🎯",
     title: "High Accuracy",
-    description: "Wheat leaf disease model trained on expert-validated images",
+    description: "Cotton leaf disease model trained on expert-validated images",
   },
   {
     icon: "⚡",
     title: "3-5 Second Analysis",
-    description: "Fast AI inference for immediate wheat disease results",
+    description: "Fast AI inference for immediate cotton disease results",
   },
   {
-    icon: "🌾",
-    title: "Wheat Only",
-    description: "Currently supports wheat crop disease detection",
+    icon: "🌿",
+    title: "Cotton Focus",
+    description: "Specialized for cotton crop disease detection",
   },
 ];
 
 const HOW_IT_WORKS_STEPS = [
-  "Upload or capture a clear wheat leaf image",
+  "Upload or capture a clear cotton leaf image",
   "AI model processes and analyzes the leaf",
-  "Wheat disease classification with confidence score",
+  "Cotton disease classification with confidence score",
   "Get treatment and prevention recommendations",
 ];
 
@@ -47,7 +47,7 @@ const HowItWorks = ({ styles }) => (
   <View style={styles.howItWorksCard}>
     <Text style={styles.howItWorksTitle}>How Our AI Works</Text>
     <Text style={styles.howItWorksSubtitle}>
-      AgriSense AI analyzes wheat leaf images using deep learning trained on wheat disease datasets
+      AgriSense AI analyzes cotton leaf images using deep learning trained on cotton disease datasets
     </Text>
     <View style={styles.stepsContainer}>
       {HOW_IT_WORKS_STEPS.map((step, idx) => (
@@ -83,7 +83,7 @@ export default function DiseaseScreen() {
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const [showSourceModal, setShowSourceModal] = useState(false);
 
-  const crops = [{ name: "Wheat", color: colors.warning, icon: "🌾", available: true }];
+  const crops = [{ name: "Cotton", color: colors.warning, icon: "🌿", available: true }];
 
   const normalizePickedAsset = (asset) => ({
     uri: asset?.uri,
@@ -214,33 +214,23 @@ export default function DiseaseScreen() {
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
-      <View style={[styles.heroSection, { backgroundColor: colors.heroGradientStart, borderColor: colors.border }]}>
-        <View style={styles.badgeContainer}>
-          <View style={[styles.badge, { backgroundColor: colors.primarySoft }]}>
-            <Zap size={12} color={colors.primary} />
-            <Text style={[styles.badgeText, { color: colors.primaryDark }]}>Wheat Disease Detection</Text>
-          </View>
-          <ThemeToggle />
-        </View>
-
-        <Text style={[styles.heroTitle, { color: colors.text }]}>
-          Detect Wheat Diseases{" "}
-          <Text style={[styles.heroTitleGreen, { color: colors.primary }]}>Instantly With AI</Text>
-        </Text>
-
-        <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>
-          Upload a wheat leaf image and let our deep learning model identify wheat diseases
-          and suggest effective treatments. Currently supports wheat crop only.
-        </Text>
-      </View>
+      <ScreenHero
+        variant="card"
+        badge="Cotton Disease Detection"
+        badgeIcon={Zap}
+        title="Detect Cotton Diseases "
+        titleAccent="Instantly With AI"
+        subtitle="Upload a cotton leaf image and let our deep learning model identify diseases and suggest effective treatments."
+        style={{ marginBottom: 8 }}
+      />
 
       {/* Upload Section and How It Works */}
       <View style={styles.twoColumnSection}>
         {/* Upload Card */}
         <View style={styles.uploadCard}>
-          <Text style={styles.uploadTitle}>Upload Wheat Leaf Image</Text>
+          <Text style={styles.uploadTitle}>Upload Cotton Leaf Image</Text>
           <Text style={styles.uploadSubtitle}>
-            Supported formats JPG, PNG. Use a clear wheat leaf image with visible texture
+            Supported formats JPG, PNG. Use a clear cotton leaf image with visible texture
           </Text>
 
           <TouchableOpacity

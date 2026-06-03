@@ -1,10 +1,35 @@
 import React from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { Leaf, Brain, Users, Sparkles } from "lucide-react-native";
+import { Leaf, Brain, Users, Sparkles, Server, ChevronRight } from "lucide-react-native";
 import { useTheme } from "../theme/ThemeContext";
-import ThemeToggle from "../components/ThemeToggle";
-import { RAG_API_BASE_URL, DISEASE_API_BASE_URL } from "../utils/api";
+import ScreenHero from "../components/ScreenHero";
+import { SCREEN_LAYOUT } from "../theme/layout";
+import { RAG_API_BASE_URL, DISEASE_API_BASE_URL, APP_API_BASE_URL } from "../utils/api";
+
+const formatHost = (url) =>
+  url.replace(/^https?:\/\//, "").replace(/\/api\/?$/, "").replace(/\/+$/, "");
+
+const BACKEND_SERVICES = [
+  {
+    key: "disease",
+    label: "Disease Detection API",
+    description: "Cotton leaf image analysis & predictions",
+    url: DISEASE_API_BASE_URL,
+  },
+  {
+    key: "rag",
+    label: "RAG Assistant API",
+    description: "Farming Q&A, translation & voice",
+    url: RAG_API_BASE_URL,
+  },
+  {
+    key: "app",
+    label: "Community & Auth API",
+    description: "Posts, profiles & chat history",
+    url: APP_API_BASE_URL,
+  },
+];
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -13,7 +38,7 @@ export default function HomeScreen() {
   const modules = [
     {
       title: "Disease Detection",
-      desc: "Wheat leaf AI analysis with treatment tips",
+      desc: "Cotton leaf AI analysis with treatment tips",
       icon: Leaf,
       route: "DiseaseScreen",
       tint: colors.primarySoft,
@@ -35,28 +60,37 @@ export default function HomeScreen() {
   ];
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={[styles.eyebrow, { color: colors.primary }]}>Welcome back</Text>
-            <Text style={[styles.title, { color: colors.text }]}>AgriSense</Text>
-          </View>
-          <ThemeToggle />
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.scrollContent}
+    >
+      <ScreenHero
+        eyebrow="Welcome back"
+        title="AgriSense"
+        subtitle="Intelligent agriculture powered by cotton disease AI, a multilingual RAG assistant, and your farmer community."
+        style={{ marginBottom: 12 }}
+      />
+
+      <View
+        style={[
+          styles.heroCard,
+          {
+            backgroundColor: colors.heroGradientStart,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <View style={[styles.heroIconWrap, { backgroundColor: colors.primary }]}>
+          <Sparkles size={22} color={colors.onPrimary} />
         </View>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Intelligent agriculture powered by AI disease detection, RAG assistant, and farmer community.
-        </Text>
-      </View>
-
-      <View style={[styles.heroCard, { backgroundColor: colors.heroGradientStart, borderColor: colors.border }]}>
-        <Sparkles size={22} color={colors.primary} />
         <Text style={[styles.heroText, { color: colors.text }]}>
-          Upload a leaf photo, ask farming questions in your language, and connect with growers near you.
+          Upload a cotton leaf photo, ask farming questions in your language, and connect with
+          growers near you.
         </Text>
       </View>
 
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>Explore</Text>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>Explore modules</Text>
       <View style={styles.modulesGrid}>
         {modules.map((module) => {
           const Icon = module.icon;
@@ -72,25 +106,46 @@ export default function HomeScreen() {
               </View>
               <Text style={[styles.moduleTitle, { color: colors.text }]}>{module.title}</Text>
               <Text style={[styles.moduleDesc, { color: colors.textSecondary }]}>{module.desc}</Text>
+              <View style={styles.moduleFooter}>
+                <Text style={[styles.moduleLink, { color: colors.primary }]}>Open</Text>
+                <ChevronRight size={16} color={colors.primary} />
+              </View>
             </TouchableOpacity>
           );
         })}
       </View>
 
       <View style={[styles.statsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.statsTitle, { color: colors.text }]}>Connected services</Text>
-        <View style={[styles.serviceRow, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.serviceLabel, { color: colors.textSecondary }]}>Disease API</Text>
-          <Text style={[styles.serviceValue, { color: colors.primary }]} numberOfLines={1}>
-            {DISEASE_API_BASE_URL.replace("https://", "")}
-          </Text>
+        <View style={styles.statsHeader}>
+          <View style={[styles.statsIconWrap, { backgroundColor: colors.primarySoft }]}>
+            <Server size={18} color={colors.primaryDark} />
+          </View>
+          <View style={styles.statsHeaderText}>
+            <Text style={[styles.statsTitle, { color: colors.text }]}>Connected backends</Text>
+            <Text style={[styles.statsSubtitle, { color: colors.textSecondary }]}>
+              Three Render services power this app
+            </Text>
+          </View>
         </View>
-        <View style={styles.serviceRow}>
-          <Text style={[styles.serviceLabel, { color: colors.textSecondary }]}>RAG Assistant</Text>
-          <Text style={[styles.serviceValue, { color: colors.primary }]} numberOfLines={1}>
-            {RAG_API_BASE_URL.replace("https://", "").replace("http://", "")}
-          </Text>
-        </View>
+
+        {BACKEND_SERVICES.map((service, index) => (
+          <View
+            key={service.key}
+            style={[
+              styles.serviceRow,
+              index < BACKEND_SERVICES.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 },
+            ]}
+          >
+            <View style={styles.serviceRowTop}>
+              <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
+              <Text style={[styles.serviceLabel, { color: colors.text }]}>{service.label}</Text>
+            </View>
+            <Text style={[styles.serviceDesc, { color: colors.textSecondary }]}>{service.description}</Text>
+            <Text style={[styles.serviceValue, { color: colors.primary }]} numberOfLines={2}>
+              {formatHost(service.url)}
+            </Text>
+          </View>
+        ))}
       </View>
     </ScrollView>
   );
@@ -98,26 +153,41 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { padding: 24, paddingBottom: 8 },
-  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
-  eyebrow: { fontSize: 13, fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase" },
-  title: { fontSize: 34, fontWeight: "800", marginTop: 4 },
-  subtitle: { fontSize: 15, lineHeight: 22 },
+  scrollContent: { paddingBottom: 32 },
   heroCard: {
-    marginHorizontal: 20,
-    marginBottom: 24,
+    marginHorizontal: SCREEN_LAYOUT.horizontalPadding,
+    marginBottom: 28,
     padding: 20,
-    borderRadius: 20,
+    borderRadius: SCREEN_LAYOUT.cardRadius,
     borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 14,
+  },
+  heroIconWrap: {
+    width: SCREEN_LAYOUT.iconSize,
+    height: SCREEN_LAYOUT.iconSize,
+    borderRadius: SCREEN_LAYOUT.iconRadius,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroText: { flex: 1, ...SCREEN_LAYOUT.subtitle },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginHorizontal: SCREEN_LAYOUT.horizontalPadding,
+    marginBottom: 14,
+  },
+  modulesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: SCREEN_LAYOUT.horizontalPadding - 4,
     gap: 12,
   },
-  heroText: { fontSize: 15, lineHeight: 22, fontWeight: "500" },
-  sectionTitle: { fontSize: 20, fontWeight: "700", marginHorizontal: 20, marginBottom: 14 },
-  modulesGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16, gap: 12 },
   moduleCard: {
     width: "47%",
     padding: 18,
-    borderRadius: 18,
+    borderRadius: SCREEN_LAYOUT.cardRadius,
     borderWidth: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -126,25 +196,39 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   moduleIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+    width: SCREEN_LAYOUT.iconSize,
+    height: SCREEN_LAYOUT.iconSize,
+    borderRadius: SCREEN_LAYOUT.iconRadius,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 12,
   },
   moduleTitle: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
-  moduleDesc: { fontSize: 12, lineHeight: 17 },
+  moduleDesc: { fontSize: 12, lineHeight: 17, minHeight: 34 },
+  moduleFooter: { flexDirection: "row", alignItems: "center", marginTop: 10, gap: 2 },
+  moduleLink: { fontSize: 13, fontWeight: "600" },
   statsCard: {
-    marginHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 32,
+    marginHorizontal: SCREEN_LAYOUT.horizontalPadding,
+    marginTop: 28,
     padding: 18,
-    borderRadius: 18,
+    borderRadius: SCREEN_LAYOUT.cardRadius,
     borderWidth: 1,
   },
-  statsTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
-  serviceRow: { paddingVertical: 10, borderBottomWidth: 1 },
-  serviceLabel: { fontSize: 12, marginBottom: 4 },
-  serviceValue: { fontSize: 11, fontWeight: "600" },
+  statsHeader: { flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 12 },
+  statsIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statsHeaderText: { flex: 1 },
+  statsTitle: { fontSize: 16, fontWeight: "700" },
+  statsSubtitle: { fontSize: 12, marginTop: 2 },
+  serviceRow: { paddingVertical: 12 },
+  serviceRowTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  serviceLabel: { fontSize: 14, fontWeight: "600" },
+  serviceDesc: { fontSize: 12, marginBottom: 6, marginLeft: 16 },
+  serviceValue: { fontSize: 11, fontWeight: "600", marginLeft: 16 },
 });

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TextInput,
   TouchableOpacity,
@@ -16,7 +15,8 @@ import {
   Platform,
   Dimensions,
   Share,
-  Keyboard,
+  LayoutAnimation,
+  UIManager,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import storageService from "../services/storageService";
@@ -24,14 +24,33 @@ import { APP_API_BASE_URL as API_URL } from "../utils/api";
 import { useTheme } from "../theme/ThemeContext";
 import { useThemedStyles } from "../theme/useThemedStyles";
 import { createCommunityStyles } from "./communityStyles";
-import ThemeToggle from "../components/ThemeToggle";
 import PostVideo from "../components/PostVideo";
-import { Users, MessageCircle, Heart, Share2, X, Send, Image as ImageIcon, XCircle, Trash2, Camera, Video } from "lucide-react-native";
+import {
+  Users,
+  MessageCircle,
+  Heart,
+  Share2,
+  X,
+  Send,
+  Image as ImageIcon,
+  XCircle,
+  Trash2,
+  Camera,
+  Video,
+  TrendingUp,
+  Leaf,
+  CheckCircle2,
+  ArrowUp,
+  Search,
+  Plus,
+} from "lucide-react-native";
+import ScreenHero from "../components/ScreenHero";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-
-
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // ─── Time Ago Helper ─────────────────────────────────────────────
 const timeAgo = (date) => {
@@ -55,20 +74,25 @@ const timeAgo = (date) => {
   return `${years}y ago`;
 };
 
+// ─── Avatar Gradient Helper ─────────────────────────────────────────────
+const AVATAR_GRADIENTS = [
+  "#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16",
+];
+
+const getAvatarColor = (seed) => {
+  const index = (seed?.length || 0) % AVATAR_GRADIENTS.length;
+  return AVATAR_GRADIENTS[index];
+};
+
+const getInitials = (name) => {
+  if (!name) return "?";
+  return name.charAt(0).toUpperCase();
+};
+
 // ─── Avatar Component ─────────────────────────────────────────────
 const Avatar = ({ src, name, size = 40, isOnline = false }) => {
   const styles = useThemedStyles(createCommunityStyles);
-
-  const getInitials = () => {
-    if (!name) return "?";
-    return name.charAt(0).toUpperCase();
-  };
-
-  const getColor = () => {
-    const colors = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
-    const index = (name?.length || 0) % colors.length;
-    return colors[index];
-  };
+  const color = getAvatarColor(name);
 
   return (
     <View style={{ position: "relative" }}>
@@ -79,14 +103,22 @@ const Avatar = ({ src, name, size = 40, isOnline = false }) => {
             width: size,
             height: size,
             borderRadius: size / 2,
-            backgroundColor: src ? "transparent" : getColor(),
+            backgroundColor: src ? "transparent" : color,
+            shadowColor: color,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.25,
+            shadowRadius: 6,
+            elevation: 4,
           },
         ]}
       >
         {src ? (
-          <Image source={{ uri: src }} style={[styles.avatarImage, { width: size, height: size, borderRadius: size / 2 }]} />
+          <Image
+            source={{ uri: src }}
+            style={[styles.avatarImage, { width: size, height: size, borderRadius: size / 2 }]}
+          />
         ) : (
-          <Text style={[styles.avatarText, { fontSize: size * 0.4 }]}>{getInitials()}</Text>
+          <Text style={[styles.avatarText, { fontSize: size * 0.42 }]}>{getInitials(name)}</Text>
         )}
       </View>
       {isOnline && (
@@ -94,11 +126,11 @@ const Avatar = ({ src, name, size = 40, isOnline = false }) => {
           style={[
             styles.onlineDot,
             {
-              width: size * 0.25,
-              height: size * 0.25,
-              borderRadius: size * 0.125,
-              right: size * 0.05,
-              bottom: size * 0.05,
+              width: size * 0.28,
+              height: size * 0.28,
+              borderRadius: size * 0.14,
+              right: size * 0.02,
+              bottom: size * 0.02,
             },
           ]}
         />
@@ -113,14 +145,24 @@ const LikeButton = ({ liked, count, onPress, loading }) => {
   const styles = useThemedStyles(createCommunityStyles);
 
   return (
-  <TouchableOpacity
-    onPress={onPress}
-    disabled={loading}
-    style={[styles.actionButton, liked && styles.actionButtonActive]}
-  >
-    <Heart size={20} color={liked ? colors.danger : colors.textSecondary} fill={liked ? colors.danger : "none"} />
-    {count > 0 && <Text style={[styles.actionButtonText, liked && styles.actionButtonTextActive]}>{count}</Text>}
-  </TouchableOpacity>
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={loading}
+      style={[styles.actionButton, liked && styles.actionButtonActive]}
+      activeOpacity={0.7}
+    >
+      <Heart
+        size={20}
+        color={liked ? colors.danger : colors.textSecondary}
+        fill={liked ? colors.danger : "none"}
+        strokeWidth={liked ? 2.5 : 2}
+      />
+      {count > 0 && (
+        <Text style={[styles.actionButtonText, liked && styles.actionButtonTextActive]}>
+          {count}
+        </Text>
+      )}
+    </TouchableOpacity>
   );
 };
 
@@ -138,12 +180,12 @@ const ShareButton = ({ onShare }) => {
 
   return (
     <View style={styles.shareWrapper}>
-      <TouchableOpacity onPress={handleShare} style={styles.actionButton}>
+      <TouchableOpacity onPress={handleShare} style={styles.actionButton} activeOpacity={0.7}>
         <Share2 size={20} color={colors.textSecondary} />
       </TouchableOpacity>
       {showTooltip && (
         <View style={styles.tooltip}>
-          <Text style={styles.tooltipText}>Link copied!</Text>
+          <Text style={styles.tooltipText}>Shared!</Text>
         </View>
       )}
     </View>
@@ -179,10 +221,10 @@ const CommentItem = ({ comment, user, onReply, onLike, depth = 0 }) => {
           </View>
           <Text style={styles.commentText}>{comment.text}</Text>
           <View style={styles.commentFooter}>
-            <TouchableOpacity onPress={() => onLike?.(comment.id)}>
+            <TouchableOpacity onPress={() => onLike?.(comment.id)} hitSlop={8}>
               <Text style={styles.commentLikeText}>❤️ {comment.likes || 0}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowReply(!showReply)}>
+            <TouchableOpacity onPress={() => setShowReply(!showReply)} hitSlop={8}>
               <Text style={styles.commentReplyText}>Reply</Text>
             </TouchableOpacity>
           </View>
@@ -201,7 +243,10 @@ const CommentItem = ({ comment, user, onReply, onLike, depth = 0 }) => {
                 onSubmitEditing={handleReplySubmit}
               />
               <TouchableOpacity onPress={handleReplySubmit} disabled={!replyText.trim()}>
-                <Send size={16} color={replyText.trim() ? colors.primary : colors.textMuted} />
+                <Send
+                  size={16}
+                  color={replyText.trim() ? colors.primary : colors.textMuted}
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -241,10 +286,14 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
 
   const liked = user && localPost.likes?.some((l) => l.userId === user.id);
   const comments = localPost.comments || [];
-  
+
   const MAX_CHARS = 280;
   const shouldTruncate = localPost.content?.length > MAX_CHARS;
-  const displayContent = isExpanded ? localPost.content : (shouldTruncate ? localPost.content?.slice(0, MAX_CHARS) + "..." : localPost.content);
+  const displayContent = isExpanded
+    ? localPost.content
+    : shouldTruncate
+    ? localPost.content?.slice(0, MAX_CHARS) + "..."
+    : localPost.content;
 
   const getAuthToken = () => token || null;
 
@@ -254,17 +303,13 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
       return;
     }
     if (isLiking) return;
-    
+
     setIsLiking(true);
-    // Optimistic update
     const newLikes = liked
-      ? localPost.likes.filter(l => l.userId !== user.id)
+      ? localPost.likes.filter((l) => l.userId !== user.id)
       : [...(localPost.likes || []), { userId: user.id }];
-    
-    setLocalPost(prev => ({
-      ...prev,
-      likes: newLikes
-    }));
+
+    setLocalPost((prev) => ({ ...prev, likes: newLikes }));
 
     try {
       const res = await fetch(`${API_URL}/posts/like`, {
@@ -275,7 +320,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
         },
         body: JSON.stringify({ postId: localPost.id }),
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -284,7 +329,6 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
       }
     } catch (error) {
       console.error("Like error:", error);
-      // Revert on error
       setLocalPost(post);
     } finally {
       setIsLiking(false);
@@ -297,7 +341,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
       return;
     }
     if (!commentText.trim() || isPosting) return;
-    
+
     setIsPosting(true);
     const tempComment = {
       id: Date.now().toString(),
@@ -307,11 +351,10 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
       likes: 0,
       replies: [],
     };
-    
-    // Optimistic update
-    setLocalPost(prev => ({
+
+    setLocalPost((prev) => ({
       ...prev,
-      comments: [...(prev.comments || []), tempComment]
+      comments: [...(prev.comments || []), tempComment],
     }));
     setCommentText("");
 
@@ -324,23 +367,20 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
         },
         body: JSON.stringify({ postId: localPost.id, text: commentText }),
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
           const updatedComments = [...(localPost.comments || []), data.comment];
           onPostUpdate?.(localPost.id, { comments: updatedComments });
-          setLocalPost(prev => ({
-            ...prev,
-            comments: updatedComments
-          }));
+          setLocalPost((prev) => ({ ...prev, comments: updatedComments }));
         }
       }
     } catch (error) {
       console.error("Comment error:", error);
-      setLocalPost(prev => ({
+      setLocalPost((prev) => ({
         ...prev,
-        comments: prev.comments.filter(c => c.id !== tempComment.id)
+        comments: prev.comments.filter((c) => c.id !== tempComment.id),
       }));
     } finally {
       setIsPosting(false);
@@ -362,7 +402,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${getAuthToken()}` },
               });
-              
+
               if (res.ok) {
                 const data = await res.json();
                 if (data.success) {
@@ -391,7 +431,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
 
   const handleReply = async (commentId, replyText) => {
     if (!user) return null;
-    
+
     try {
       const res = await fetch(`${API_URL}/posts/comment/reply`, {
         method: "POST",
@@ -401,16 +441,16 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
         },
         body: JSON.stringify({ postId: localPost.id, commentId, text: replyText }),
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          const updatedComments = localPost.comments.map(c =>
+          const updatedComments = localPost.comments.map((c) =>
             c.id === commentId
               ? { ...c, replies: [...(c.replies || []), data.reply] }
               : c
           );
-          setLocalPost(prev => ({ ...prev, comments: updatedComments }));
+          setLocalPost((prev) => ({ ...prev, comments: updatedComments }));
           onPostUpdate?.(localPost.id, { comments: updatedComments });
           return data.reply;
         }
@@ -437,12 +477,12 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          const updatedComments = localPost.comments.map(c =>
+          const updatedComments = localPost.comments.map((c) =>
             c.id === commentId
               ? { ...c, likes: (c.likes || 0) + (data.liked ? 1 : -1) }
               : c
           );
-          setLocalPost(prev => ({ ...prev, comments: updatedComments }));
+          setLocalPost((prev) => ({ ...prev, comments: updatedComments }));
           onPostUpdate?.(localPost.id, { comments: updatedComments });
         }
       }
@@ -460,18 +500,32 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
+  const toggleComments = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsCommentsOpen(!isCommentsOpen);
+  };
+
+  const isTrending = (localPost.likes?.length || 0) > 5;
+
   return (
     <View style={styles.postCard}>
+      {isTrending && (
+        <View style={styles.trendingBadge}>
+          <TrendingUp size={12} color={colors.onPrimary} />
+          <Text style={styles.trendingText}>Trending</Text>
+        </View>
+      )}
+
       {/* Header */}
       <View style={styles.postHeader}>
         <View style={styles.postUserInfo}>
           <Avatar src={localPost.user?.avatar} name={localPost.user?.name} size={48} isOnline={isOnline} />
-          <View>
+          <View style={styles.postUserMeta}>
             <View style={styles.postUserNameRow}>
               <Text style={styles.postUserName}>{localPost.user?.name || "Unknown"}</Text>
               {localPost.user?.verified && (
                 <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedText}>✓</Text>
+                  <CheckCircle2 size={12} color={colors.onPrimary} />
                 </View>
               )}
             </View>
@@ -484,9 +538,9 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
             </View>
           </View>
         </View>
-        
+
         {user?.id === localPost.userId && (
-          <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
+          <TouchableOpacity onPress={handleDelete} style={styles.deleteButton} hitSlop={12}>
             <Trash2 size={18} color={colors.danger} />
           </TouchableOpacity>
         )}
@@ -497,7 +551,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
         <View style={styles.postContent}>
           <Text style={styles.postContentText}>{displayContent}</Text>
           {shouldTruncate && (
-            <TouchableOpacity onPress={() => setIsExpanded(!isExpanded)}>
+            <TouchableOpacity onPress={() => setIsExpanded(!isExpanded)} hitSlop={8}>
               <Text style={styles.readMore}>{isExpanded ? "Show less" : "Read more"}</Text>
             </TouchableOpacity>
           )}
@@ -532,7 +586,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
           {localPost.likes?.length > 0 && (
             <View style={styles.likesInfo}>
               <View style={styles.likeIconContainer}>
-                <Text style={styles.likeIcon}>♥</Text>
+                <Heart size={10} color={colors.onPrimary} fill={colors.onPrimary} />
               </View>
               <Text style={styles.likesCount}>
                 {localPost.likes.length.toLocaleString()} like{localPost.likes.length !== 1 ? "s" : ""}
@@ -540,7 +594,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
             </View>
           )}
           {comments.length > 0 && !isCommentsOpen && (
-            <TouchableOpacity onPress={() => setIsCommentsOpen(true)}>
+            <TouchableOpacity onPress={toggleComments}>
               <Text style={styles.commentsCount}>
                 {comments.length.toLocaleString()} comment{comments.length !== 1 ? "s" : ""}
               </Text>
@@ -551,13 +605,26 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
 
       {/* Action Buttons */}
       <View style={styles.postActions}>
-        <LikeButton liked={liked} count={localPost.likes?.length || 0} onPress={handleLike} loading={isLiking} />
-        
-        <TouchableOpacity onPress={openCommentInput} style={styles.actionButton}>
-          <MessageCircle size={20} color={colors.textSecondary} />
-          {comments.length > 0 && <Text style={styles.actionButtonText}>{comments.length}</Text>}
+        <LikeButton
+          liked={liked}
+          count={localPost.likes?.length || 0}
+          onPress={handleLike}
+          loading={isLiking}
+        />
+
+        <TouchableOpacity
+          onPress={openCommentInput}
+          style={[styles.actionButton, isCommentsOpen && styles.actionButtonActiveComment]}
+          activeOpacity={0.7}
+        >
+          <MessageCircle size={20} color={isCommentsOpen ? colors.primary : colors.textSecondary} />
+          {comments.length > 0 && (
+            <Text style={[styles.actionButtonText, isCommentsOpen && styles.actionButtonTextActiveComment]}>
+              {comments.length}
+            </Text>
+          )}
         </TouchableOpacity>
-        
+
         <ShareButton onShare={handleShare} />
       </View>
 
@@ -579,7 +646,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
               scrollEnabled={false}
             />
           )}
-          
+
           {user ? (
             <View style={styles.commentInputContainer}>
               <Avatar name={user.name} src={user.avatar} size={36} />
@@ -593,15 +660,18 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
                   style={styles.commentInput}
                   multiline
                 />
-                <TouchableOpacity 
-                  onPress={handleComment} 
+                <TouchableOpacity
+                  onPress={handleComment}
                   disabled={!commentText.trim() || isPosting}
                   style={styles.commentSendButton}
                 >
                   {isPosting ? (
                     <ActivityIndicator size="small" color={colors.primary} />
                   ) : (
-                    <Send size={18} color={commentText.trim() ? colors.primary : colors.textMuted} />
+                    <Send
+                      size={18}
+                      color={commentText.trim() ? colors.primary : colors.textMuted}
+                    />
                   )}
                 </TouchableOpacity>
               </View>
@@ -635,12 +705,14 @@ export default function CommunityScreen({ AuthModalComponent }) {
   const [uploading, setUploading] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [usingMockData, setUsingMockData] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const scrollRef = useRef(null);
 
   const filters = [
-    { id: "all", label: "All Posts" },
-    { id: "disease", label: "Disease Help" },
-    { id: "tips", label: "Farming Tips" },
-    { id: "success", label: "Success Stories" },
+    { id: "all", label: "All Posts", icon: Leaf },
+    { id: "disease", label: "Disease Help", icon: Search },
+    { id: "tips", label: "Farming Tips", icon: CheckCircle2 },
+    { id: "success", label: "Success Stories", icon: TrendingUp },
   ];
 
   // Load user and token on mount
@@ -657,38 +729,35 @@ export default function CommunityScreen({ AuthModalComponent }) {
     try {
       const savedToken = await storageService.getItem("token");
       const savedUser = await storageService.getItem("user");
-      
+
       if (savedToken && savedUser) {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
       }
     } catch (error) {
-      // Silent fallback - AsyncStorage may not be available
-      // Continue without user data
+      // Silent fallback
     }
   };
 
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      
-      // Try to fetch from API with 8 second timeout
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
-      
+
       try {
         const response = await fetch(`${API_URL}/posts`, {
           signal: controller.signal,
         });
-        
+
         clearTimeout(timeoutId);
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.posts && data.posts.length > 0) {
             setPosts(data.posts);
             setUsingMockData(false);
-            // Cache posts silently
             try {
               await storageService.setItem("cached_posts", JSON.stringify(data.posts));
             } catch (cacheError) {
@@ -697,11 +766,9 @@ export default function CommunityScreen({ AuthModalComponent }) {
             return;
           }
         }
-        // If API returns empty, show empty state
         throw new Error("No posts from API");
       } catch (fetchError) {
         clearTimeout(timeoutId);
-        // Try cached posts first
         try {
           const cachedPosts = await storageService.getItem("cached_posts");
           if (cachedPosts) {
@@ -710,9 +777,8 @@ export default function CommunityScreen({ AuthModalComponent }) {
             return;
           }
         } catch (cacheError) {
-          // Ignore cache errors
+          // Ignore
         }
-        // Show empty state - no mock data
         setPosts([]);
         setUsingMockData(false);
       }
@@ -729,9 +795,9 @@ export default function CommunityScreen({ AuthModalComponent }) {
 
   const handlePostUpdate = (postId, updates, isDelete = false) => {
     if (isDelete) {
-      setPosts(prev => prev.filter(p => p.id !== postId));
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
     } else {
-      setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updates } : p));
+      setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, ...updates } : p)));
     }
   };
 
@@ -915,22 +981,34 @@ export default function CommunityScreen({ AuthModalComponent }) {
       storageService.setItem("token", userToken);
       storageService.setItem("user", JSON.stringify(userData));
     } catch (error) {
-      // Silent fail - continue without storage
+      // Silent fail
     }
     setShowAuthModal(false);
     fetchPosts();
   };
 
-  const filteredPosts = posts.filter(post => {
+  const filteredPosts = posts.filter((post) => {
     if (activeFilter === "all") return true;
     return post.tags?.includes(activeFilter);
+  }).filter((post) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      post.content?.toLowerCase().includes(q) ||
+      post.user?.name?.toLowerCase().includes(q)
+    );
   });
+
+  const totalLikes = posts.reduce((sum, p) => sum + (p.likes?.length || 0), 0);
+  const totalComments = posts.reduce((sum, p) => sum + (p.comments?.length || 0), 0);
 
   if (loading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading community posts...</Text>
+        <View style={styles.loadingRing}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading community...</Text>
       </View>
     );
   }
@@ -942,53 +1020,104 @@ export default function CommunityScreen({ AuthModalComponent }) {
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
+        }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <Users size={28} color={colors.primary} />
-            <View style={styles.headerTextWrap}>
-              <Text style={[styles.title, { color: colors.text }]}>Farmer Community</Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Connect, Share & Learn Together</Text>
-            </View>
-            <ThemeToggle size={20} />
-          </View>
+        <ScreenHero
+          icon={Users}
+          title="Farmer Community"
+          subtitle="Connect, share tips, and learn from growers near you"
+        >
           <View style={styles.statsRow}>
-            <Text style={styles.statsText}>
-              📊 {posts.length} Posts • {posts.reduce((sum, p) => sum + (p.comments?.length || 0), 0)} Comments
-              {usingMockData && " • Demo Mode"}
-            </Text>
+            <View style={styles.statPill}>
+              <Leaf size={14} color={colors.primary} />
+              <Text style={styles.statPillText}>{posts.length} Posts</Text>
+            </View>
+            <View style={styles.statPill}>
+              <MessageCircle size={14} color={colors.primary} />
+              <Text style={styles.statPillText}>{totalComments} Comments</Text>
+            </View>
+            <View style={styles.statPill}>
+              <Heart size={14} color={colors.danger} />
+              <Text style={styles.statPillText}>{totalLikes} Likes</Text>
+            </View>
+            {usingMockData && (
+              <View style={[styles.statPill, styles.statPillWarn]}>
+                <Text style={styles.statPillTextWarn}>Demo Mode</Text>
+              </View>
+            )}
           </View>
+        </ScreenHero>
+
+        {/* Search Bar */}
+        <View style={styles.searchBar}>
+          <Search size={18} color={colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search posts..."
+            placeholderTextColor={colors.textMuted}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <X size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Create Post Button */}
-        <TouchableOpacity style={styles.createButton} onPress={handleCreatePostClick}>
-          <Text style={styles.createButtonText}>+ Share your farming experience</Text>
+        {/* Create Post Card */}
+        <TouchableOpacity style={styles.createCard} onPress={handleCreatePostClick} activeOpacity={0.8}>
+          <View style={styles.createCardInner}>
+            <View style={styles.createCardIcon}>
+              <Plus size={24} color={colors.onPrimary} />
+            </View>
+            <View style={styles.createCardTextWrap}>
+              <Text style={styles.createCardTitle}>Share your experience</Text>
+              <Text style={styles.createCardSubtitle}>Ask a question or share a tip</Text>
+            </View>
+            <ArrowUp size={20} color={colors.primary} style={{ transform: [{ rotate: "45deg" }] }} />
+          </View>
         </TouchableOpacity>
 
         {/* Filters */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
-          {filters.map((filter) => (
-            <TouchableOpacity
-              key={filter.id}
-              style={[styles.filterChip, activeFilter === filter.id && styles.filterChipActive]}
-              onPress={() => setActiveFilter(filter.id)}
-            >
-              <Text style={[styles.filterText, activeFilter === filter.id && styles.filterTextActive]}>
-                {filter.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {filters.map((filter) => {
+            const Icon = filter.icon;
+            const active = activeFilter === filter.id;
+            return (
+              <TouchableOpacity
+                key={filter.id}
+                style={[styles.filterChip, active && styles.filterChipActive]}
+                onPress={() => setActiveFilter(filter.id)}
+                activeOpacity={0.8}
+              >
+                <Icon size={14} color={active ? colors.onPrimary : colors.textSecondary} />
+                <Text style={[styles.filterText, active && styles.filterTextActive]}>
+                  {filter.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         {/* Feed */}
         {filteredPosts.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyEmoji}>🌾</Text>
-            <Text style={styles.emptyTitle}>No posts yet</Text>
-            <Text style={styles.emptyText}>Be the first to share your farming journey!</Text>
+            <View style={styles.emptyIconCircle}>
+              <Leaf size={40} color={colors.primary} />
+            </View>
+            <Text style={styles.emptyTitle}>
+              {searchQuery ? "No results found" : "No posts yet"}
+            </Text>
+            <Text style={styles.emptyText}>
+              {searchQuery
+                ? "Try a different search term"
+                : "Be the first to share your farming journey!"}
+            </Text>
           </View>
         ) : (
           <View style={styles.feed}>
@@ -1004,7 +1133,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
             ))}
           </View>
         )}
-        
+
         <View style={styles.footer}>
           <Text style={styles.footerText}>AgriSense AI Community • {posts.length} posts</Text>
         </View>
@@ -1012,37 +1141,46 @@ export default function CommunityScreen({ AuthModalComponent }) {
 
       {/* Create Post Modal */}
       <Modal visible={showCreateModal} animationType="slide" transparent={false}>
-        <View style={[styles.modalContainer, { backgroundColor: colors.modalBg }]}>
+        <View style={[styles.modalContainer, { backgroundColor: colors.modalBg || colors.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Create Post</Text>
-            <TouchableOpacity onPress={() => setShowCreateModal(false)}>
+            <TouchableOpacity onPress={() => setShowCreateModal(false)} hitSlop={12}>
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
-          
-          <ScrollView style={styles.modalContent}>
+
+          <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
             <View style={styles.modalUserInfo}>
               <Avatar name={user?.name} src={user?.avatar} size={48} />
-              <Text style={[styles.modalUserName, { color: colors.text }]}>{user?.name || "Guest"}</Text>
+              <View>
+                <Text style={[styles.modalUserName, { color: colors.text }]}>{user?.name || "Guest"}</Text>
+                <View style={styles.publicBadge}>
+                  <Text style={styles.publicText}>Public</Text>
+                </View>
+              </View>
             </View>
-            
+
             <TextInput
               value={newPostContent}
               onChangeText={setNewPostContent}
-              placeholder="What's happening on your farm? Share an update..."
+              placeholder="What's happening on your farm? Share an update... 🌿"
               placeholderTextColor={colors.textMuted}
-              style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.text }]}
+              style={[
+                styles.modalInput,
+                { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.text },
+              ]}
               multiline
               maxLength={500}
+              textAlignVertical="top"
             />
-            
+
             <View style={styles.charCounter}>
               <View style={[styles.charDot, newPostContent.length > 450 && styles.charDotWarning]} />
               <Text style={[styles.charText, newPostContent.length > 500 && styles.charTextWarning]}>
                 {newPostContent.length}/500
               </Text>
             </View>
-            
+
             {newPostMedia && (
               <View style={styles.modalMediaPreview}>
                 {newPostMediaType === "video" ? (
@@ -1055,26 +1193,40 @@ export default function CommunityScreen({ AuthModalComponent }) {
                 </TouchableOpacity>
               </View>
             )}
-            
+
             <View style={styles.modalActions}>
-              <TouchableOpacity onPress={openCamera} style={[styles.mediaButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={openCamera}
+                style={[styles.mediaButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+              >
                 <Camera size={20} color={colors.primary} />
                 <Text style={[styles.mediaButtonText, { color: colors.text }]}>Camera</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={openGallery} style={[styles.mediaButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={openGallery}
+                style={[styles.mediaButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+              >
                 <ImageIcon size={20} color={colors.primary} />
                 <Text style={[styles.mediaButtonText, { color: colors.text }]}>Photo</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={openVideoPicker} style={[styles.mediaButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={openVideoPicker}
+                style={[styles.mediaButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+              >
                 <Video size={20} color={colors.primary} />
                 <Text style={[styles.mediaButtonText, { color: colors.text }]}>Video</Text>
               </TouchableOpacity>
             </View>
-            
+
             <TouchableOpacity
               onPress={handleCreatePost}
               disabled={uploading || (!newPostContent.trim() && !newPostMedia)}
-              style={[styles.submitButton, { backgroundColor: colors.primary }, (uploading || (!newPostContent.trim() && !newPostMedia)) && styles.submitButtonDisabled]}
+              style={[
+                styles.submitButton,
+                { backgroundColor: colors.primary },
+                (uploading || (!newPostContent.trim() && !newPostMedia)) && styles.submitButtonDisabled,
+              ]}
+              activeOpacity={0.8}
             >
               {uploading ? (
                 <ActivityIndicator size="small" color={colors.onPrimary} />
@@ -1097,4 +1249,3 @@ export default function CommunityScreen({ AuthModalComponent }) {
     </KeyboardAvoidingView>
   );
 }
-
