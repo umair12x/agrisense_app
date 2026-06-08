@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,14 +15,17 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
-import storageService from "../services/storageService";
-import { APP_API_BASE_URL as API_URL } from "../utils/api";
-import { X, Eye, EyeOff, Mail, Lock, User, Check } from "lucide-react-native";
+import { appApiFetch, getResolvedAppApiBaseUrl } from "../utils/appApi";
+import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../theme/ThemeContext";
+import { X, Eye, EyeOff, Mail, Lock, User } from "lucide-react-native";
 
 const { width, height } = Dimensions.get("window");
 
-export default function AuthModal({ isOpen, onClose, onSuccess }) {
-  const [isLogin, setIsLogin] = useState(true);
+export default function AuthModal({ isOpen, onClose, onSuccess, startInSignup = false }) {
+  const { colors } = useTheme();
+  const { login } = useAuth();
+  const [isLogin, setIsLogin] = useState(!startInSignup);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -34,21 +36,68 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [touched, setTouched] = useState({});
-  
-  // Animation values
+
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  const themed = useMemo(
+    () =>
+      StyleSheet.create({
+        modalContainer: {
+          backgroundColor: colors.card,
+        },
+        closeButton: {
+          backgroundColor: colors.surfaceAlt,
+        },
+        iconWrapper: {
+          backgroundColor: colors.primarySoft,
+        },
+        title: {
+          color: colors.text,
+        },
+        subtitle: {
+          color: colors.textSecondary,
+        },
+        label: {
+          color: colors.text,
+        },
+        inputWrapper: {
+          backgroundColor: colors.inputBg,
+          borderColor: colors.border,
+        },
+        input: {
+          color: colors.text,
+        },
+        errorContainer: {
+          backgroundColor: colors.dangerSoft || "#fef2f2",
+          borderColor: colors.danger,
+        },
+        errorMessage: {
+          color: colors.danger,
+        },
+        submitButton: {
+          backgroundColor: colors.primary,
+        },
+        submitButtonDisabled: {
+          backgroundColor: colors.textMuted,
+        },
+        toggleText: {
+          color: colors.primary,
+        },
+      }),
+    [colors]
+  );
+
   useEffect(() => {
     if (isOpen) {
-      // Animate in
+      setIsLogin(!startInSignup);
+      setError("");
       Animated.parallel([
         Animated.spring(scaleAnim, {
           toValue: 1,
           friction: 8,
-            tension: 40,
+          tension: 40,
           useNativeDriver: true,
         }),
         Animated.timing(fadeAnim, {
@@ -58,13 +107,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
         }),
       ]).start();
     } else {
-      // Reset animations
       scaleAnim.setValue(0);
       fadeAnim.setValue(0);
     }
-  }, [isOpen]);
+  }, [isOpen, startInSignup, scaleAnim, fadeAnim]);
 
-  // Validate form fields
   const validateForm = () => {
     if (!isLogin && formData.name.trim().length < 2) {
       setError("Name must be at least 2 characters");
@@ -99,12 +146,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
     setLoading(true);
 
     try {
-      const endpoint = isLogin ? `${API_URL}/auth/login` : `${API_URL}/auth/signup`;
+      const path = isLogin ? "/auth/login" : "/auth/signup";
       const body = isLogin
-        ? { email: formData.email, password: formData.password }
-        : { name: formData.name, email: formData.email, password: formData.password };
+        ? { email: formData.email.trim(), password: formData.password }
+        : {
+            name: formData.name.trim(),
+            email: formData.email.trim(),
+            password: formData.password,
+          };
 
-      const response = await fetch(endpoint, {
+      const response = await appApiFetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -113,34 +164,46 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || !data.success) {
-        setError(data.message || "Authentication failed");
+        setError(
+          data.message ||
+            (response.status === 401
+              ? "Invalid email or password"
+              : `Authentication failed (${response.status})`)
+        );
         return;
       }
 
-      await storageService.setItem("token", data.token);
-      await storageService.setItem("user", JSON.stringify(data.user));
+      if (!data.token || !data.user) {
+        setError("Server response was incomplete. Please try again.");
+        return;
+      }
 
-      onSuccess(data.user, data.token);
+      await login(data.user, data.token);
+      onSuccess?.(data.user, data.token);
       onClose();
       resetForm();
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      const hint = getResolvedAppApiBaseUrl().replace(/^https?:\/\//, "");
+      setError(
+        err.message ||
+          `Cannot reach community server (${hint}). Wait a minute and try again.`
+      );
     } finally {
       setLoading(false);
     }
   };
 
   const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
     if (error) setError("");
   };
 
   const handleBlur = (field) => {
-    setTouched(prev => ({ ...prev, [field]: true }));
+    setTouched((prev) => ({ ...prev, [field]: true }));
   };
 
   const toggleMode = () => {
-    setIsLogin(prev => !prev);
+    setIsLogin((prev) => !prev);
     setError("");
     resetForm();
   };
@@ -155,7 +218,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
     setTouched({});
     setShowPassword(false);
     setShowConfirmPassword(false);
-    setRememberMe(false);
   };
 
   const getFieldError = (field) => {
@@ -167,12 +229,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
           return "Name must be at least 2 characters";
         }
         break;
-      case "email":
+      case "email": {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (formData.email && !emailRegex.test(formData.email)) {
           return "Enter a valid email";
         }
         break;
+      }
       case "password":
         if (formData.password && formData.password.length < 6) {
           return "Password must be at least 6 characters";
@@ -183,34 +246,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
           return "Passwords do not match";
         }
         break;
+      default:
+        break;
     }
     return null;
-  };
-
-  const handleGoogleLogin = () => {
-    Alert.alert("Google Login", "Google authentication will be available soon!");
-  };
-
-  const handleGithubLogin = () => {
-    Alert.alert("GitHub Login", "GitHub authentication will be available soon!");
   };
 
   if (!isOpen) return null;
 
   return (
-    <Modal
-      visible={isOpen}
-      transparent={true}
-      animationType="none"
-      onRequestClose={onClose}
-    >
+    <Modal visible={isOpen} transparent animationType="none" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.modalOverlay}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.backdrop}>
-            {/* Backdrop with fade animation */}
             <Animated.View
               style={[
                 StyleSheet.absoluteFillObject,
@@ -221,66 +272,61 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                 style={StyleSheet.absoluteFillObject}
                 activeOpacity={1}
                 onPress={onClose}
+                accessibilityLabel="Close sign in dialog"
               />
             </Animated.View>
 
-            {/* Modal Container */}
             <Animated.View
               style={[
                 styles.modalContainer,
+                themed.modalContainer,
                 {
                   transform: [{ scale: scaleAnim }],
                   opacity: fadeAnim,
                 },
               ]}
             >
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
-              >
-                {/* Decorative top bar */}
-                <View style={styles.topBar} />
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                <View style={[styles.topBar, { backgroundColor: colors.primary }]} />
 
-                {/* Close button */}
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                  <X size={20} color="#64748b" />
+                <TouchableOpacity
+                  onPress={onClose}
+                  style={[styles.closeButton, themed.closeButton]}
+                  accessibilityLabel="Close"
+                >
+                  <X size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
 
-                {/* Header */}
                 <View style={styles.header}>
                   <View style={styles.iconContainer}>
-                    {isLogin ? (
-                      <View style={styles.iconWrapper}>
-                        <Mail size={24} color="#10b981" />
-                      </View>
-                    ) : (
-                      <View style={styles.iconWrapper}>
-                        <User size={24} color="#10b981" />
-                      </View>
-                    )}
+                    <View style={[styles.iconWrapper, themed.iconWrapper]}>
+                      {isLogin ? (
+                        <Mail size={24} color={colors.primary} />
+                      ) : (
+                        <User size={24} color={colors.primary} />
+                      )}
+                    </View>
                   </View>
-                  <Text style={styles.title}>{isLogin ? "Welcome back" : "Create account"}</Text>
-                  <Text style={styles.subtitle}>
+                  <Text style={[styles.title, themed.title]}>
+                    {isLogin ? "Welcome back" : "Create account"}
+                  </Text>
+                  <Text style={[styles.subtitle, themed.subtitle]}>
                     {isLogin
                       ? "Login to your farming community"
                       : "Join our community of farmers"}
                   </Text>
                 </View>
 
-                {/* Form */}
                 <View style={styles.form}>
                   {!isLogin && (
                     <View style={styles.inputGroup}>
-                      <Text style={styles.label}>Full name</Text>
-                      <View style={styles.inputWrapper}>
-                        <User size={18} color="#94a3b8" style={styles.inputIcon} />
+                      <Text style={[styles.label, themed.label]}>Full name</Text>
+                      <View style={[styles.inputWrapper, themed.inputWrapper]}>
+                        <User size={18} color={colors.textMuted} style={styles.inputIcon} />
                         <TextInput
-                          style={[
-                            styles.input,
-                            getFieldError("name") && styles.inputError,
-                          ]}
+                          style={[styles.input, themed.input, getFieldError("name") && styles.inputError]}
                           placeholder="John Doe"
-                          placeholderTextColor="#94a3b8"
+                          placeholderTextColor={colors.textMuted}
                           value={formData.name}
                           onChangeText={(value) => handleChange("name", value)}
                           onBlur={() => handleBlur("name")}
@@ -293,16 +339,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                   )}
 
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Email address</Text>
-                    <View style={styles.inputWrapper}>
-                      <Mail size={18} color="#94a3b8" style={styles.inputIcon} />
+                    <Text style={[styles.label, themed.label]}>Email address</Text>
+                    <View style={[styles.inputWrapper, themed.inputWrapper]}>
+                      <Mail size={18} color={colors.textMuted} style={styles.inputIcon} />
                       <TextInput
-                        style={[
-                          styles.input,
-                          getFieldError("email") && styles.inputError,
-                        ]}
+                        style={[styles.input, themed.input, getFieldError("email") && styles.inputError]}
                         placeholder="you@example.com"
-                        placeholderTextColor="#94a3b8"
+                        placeholderTextColor={colors.textMuted}
                         keyboardType="email-address"
                         autoCapitalize="none"
                         value={formData.email}
@@ -316,16 +359,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                   </View>
 
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Password</Text>
-                    <View style={styles.inputWrapper}>
-                      <Lock size={18} color="#94a3b8" style={styles.inputIcon} />
+                    <Text style={[styles.label, themed.label]}>Password</Text>
+                    <View style={[styles.inputWrapper, themed.inputWrapper]}>
+                      <Lock size={18} color={colors.textMuted} style={styles.inputIcon} />
                       <TextInput
-                        style={[
-                          styles.input,
-                          getFieldError("password") && styles.inputError,
-                        ]}
+                        style={[styles.input, themed.input, getFieldError("password") && styles.inputError]}
                         placeholder="••••••••"
-                        placeholderTextColor="#94a3b8"
+                        placeholderTextColor={colors.textMuted}
                         secureTextEntry={!showPassword}
                         value={formData.password}
                         onChangeText={(value) => handleChange("password", value)}
@@ -334,11 +374,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                       <TouchableOpacity
                         onPress={() => setShowPassword(!showPassword)}
                         style={styles.eyeButton}
+                        accessibilityLabel={showPassword ? "Hide password" : "Show password"}
                       >
                         {showPassword ? (
-                          <EyeOff size={18} color="#94a3b8" />
+                          <EyeOff size={18} color={colors.textMuted} />
                         ) : (
-                          <Eye size={18} color="#94a3b8" />
+                          <Eye size={18} color={colors.textMuted} />
                         )}
                       </TouchableOpacity>
                     </View>
@@ -349,16 +390,17 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
 
                   {!isLogin && (
                     <View style={styles.inputGroup}>
-                      <Text style={styles.label}>Confirm password</Text>
-                      <View style={styles.inputWrapper}>
-                        <Lock size={18} color="#94a3b8" style={styles.inputIcon} />
+                      <Text style={[styles.label, themed.label]}>Confirm password</Text>
+                      <View style={[styles.inputWrapper, themed.inputWrapper]}>
+                        <Lock size={18} color={colors.textMuted} style={styles.inputIcon} />
                         <TextInput
                           style={[
                             styles.input,
+                            themed.input,
                             getFieldError("confirmPassword") && styles.inputError,
                           ]}
                           placeholder="••••••••"
-                          placeholderTextColor="#94a3b8"
+                          placeholderTextColor={colors.textMuted}
                           secureTextEntry={!showConfirmPassword}
                           value={formData.confirmPassword}
                           onChangeText={(value) => handleChange("confirmPassword", value)}
@@ -369,9 +411,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                           style={styles.eyeButton}
                         >
                           {showConfirmPassword ? (
-                            <EyeOff size={18} color="#94a3b8" />
+                            <EyeOff size={18} color={colors.textMuted} />
                           ) : (
-                            <Eye size={18} color="#94a3b8" />
+                            <Eye size={18} color={colors.textMuted} />
                           )}
                         </TouchableOpacity>
                       </View>
@@ -381,76 +423,36 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                     </View>
                   )}
 
-                  {isLogin && (
-                    <View style={styles.checkboxRow}>
-                      <TouchableOpacity
-                        style={styles.checkbox}
-                        onPress={() => setRememberMe(!rememberMe)}
-                      >
-                        <View style={[styles.checkboxBox, rememberMe && styles.checkboxChecked]}>
-                          {rememberMe && <Check size={12} color="white" />}
-                        </View>
-                        <Text style={styles.checkboxLabel}>Remember me</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity>
-                        <Text style={styles.forgotPassword}>Forgot password?</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
                   {error && (
-                    <View style={styles.errorContainer}>
-                      <Text style={styles.errorMessage}>{error}</Text>
+                    <View style={[styles.errorContainer, themed.errorContainer]}>
+                      <Text style={[styles.errorMessage, themed.errorMessage]}>{error}</Text>
                     </View>
                   )}
 
                   <TouchableOpacity
-                    style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+                    style={[
+                      styles.submitButton,
+                      themed.submitButton,
+                      loading && themed.submitButtonDisabled,
+                    ]}
                     onPress={handleSubmit}
                     disabled={loading}
                     activeOpacity={0.9}
+                    accessibilityLabel={isLogin ? "Login" : "Sign up"}
                   >
                     {loading ? (
-                      <ActivityIndicator size="small" color="white" />
+                      <ActivityIndicator size="small" color={colors.onPrimary} />
                     ) : (
-                      <Text style={styles.submitButtonText}>
+                      <Text style={[styles.submitButtonText, { color: colors.onPrimary }]}>
                         {isLogin ? "Login" : "Sign up"}
                       </Text>
                     )}
                   </TouchableOpacity>
                 </View>
 
-                {/* Divider */}
-                <View style={styles.dividerContainer}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>Or continue with</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                {/* Social Buttons */}
-                <View style={styles.socialButtons}>
-                  <TouchableOpacity
-                    style={styles.socialButton}
-                    onPress={handleGoogleLogin}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.socialButtonText}>G</Text>
-                    <Text style={styles.socialButtonLabel}>Google</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.socialButton}
-                    onPress={handleGithubLogin}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.socialButtonText}>🐙</Text>
-                    <Text style={styles.socialButtonLabel}>GitHub</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Toggle Mode */}
                 <View style={styles.toggleContainer}>
                   <TouchableOpacity onPress={toggleMode}>
-                    <Text style={styles.toggleText}>
+                    <Text style={[styles.toggleText, themed.toggleText]}>
                       {isLogin
                         ? "Don't have an account? Sign up"
                         : "Already have an account? Login"}
@@ -458,7 +460,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                   </TouchableOpacity>
                 </View>
 
-                {/* Bottom spacing */}
                 <View style={styles.bottomSpacing} />
               </ScrollView>
             </Animated.View>
@@ -482,7 +483,6 @@ const styles = StyleSheet.create({
     width: width * 0.9,
     maxWidth: 400,
     maxHeight: height * 0.85,
-    backgroundColor: "#ffffff",
     borderRadius: 24,
     overflow: "hidden",
     shadowColor: "#000",
@@ -496,7 +496,6 @@ const styles = StyleSheet.create({
   },
   topBar: {
     height: 4,
-    backgroundColor: "#10b981",
   },
   closeButton: {
     position: "absolute",
@@ -505,7 +504,6 @@ const styles = StyleSheet.create({
     zIndex: 1,
     padding: 8,
     borderRadius: 20,
-    backgroundColor: "#f1f5f9",
   },
   header: {
     alignItems: "center",
@@ -520,19 +518,16 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#d1fae5",
     alignItems: "center",
     justifyContent: "center",
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#1e293b",
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 13,
-    color: "#64748b",
     textAlign: "center",
   },
   form: {
@@ -544,16 +539,13 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: "500",
-    color: "#334155",
     marginBottom: 6,
   },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
     overflow: "hidden",
   },
   inputIcon: {
@@ -564,7 +556,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 10,
     fontSize: 14,
-    color: "#1e293b",
   },
   inputError: {
     borderColor: "#ef4444",
@@ -578,109 +569,25 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginLeft: 4,
   },
-  checkboxRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  checkbox: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  checkboxBox: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#cbd5e1",
-    marginRight: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxChecked: {
-    backgroundColor: "#10b981",
-    borderColor: "#10b981",
-  },
-  checkboxLabel: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  forgotPassword: {
-    fontSize: 12,
-    color: "#10b981",
-    fontWeight: "500",
-  },
   errorContainer: {
-    backgroundColor: "#fef2f2",
     borderRadius: 10,
     padding: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#fecaca",
   },
   errorMessage: {
     fontSize: 12,
-    color: "#dc2626",
     textAlign: "center",
   },
   submitButton: {
-    backgroundColor: "#10b981",
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
     marginBottom: 20,
   },
-  submitButtonDisabled: {
-    backgroundColor: "#94a3b8",
-  },
   submitButtonText: {
-    color: "white",
     fontSize: 16,
     fontWeight: "600",
-  },
-  dividerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#e2e8f0",
-  },
-  dividerText: {
-    fontSize: 11,
-    color: "#94a3b8",
-    paddingHorizontal: 12,
-  },
-  socialButtons: {
-    flexDirection: "row",
-    gap: 12,
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  socialButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 10,
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  socialButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  socialButtonLabel: {
-    fontSize: 13,
-    color: "#475569",
-    fontWeight: "500",
   },
   toggleContainer: {
     alignItems: "center",
@@ -689,49 +596,9 @@ const styles = StyleSheet.create({
   },
   toggleText: {
     fontSize: 13,
-    color: "#10b981",
     fontWeight: "500",
   },
   bottomSpacing: {
     height: 20,
-  },
-});
-
-// Dark mode styles (optional - can be toggled with theme context)
-export const darkStyles = StyleSheet.create({
-  modalContainer: {
-    backgroundColor: "#1e293b",
-  },
-  title: {
-    color: "#f1f5f9",
-  },
-  subtitle: {
-    color: "#94a3b8",
-  },
-  label: {
-    color: "#cbd5e1",
-  },
-  inputWrapper: {
-    backgroundColor: "#0f172a",
-    borderColor: "#334155",
-  },
-  input: {
-    color: "#f1f5f9",
-  },
-  checkboxLabel: {
-    color: "#94a3b8",
-  },
-  socialButton: {
-    backgroundColor: "#0f172a",
-    borderColor: "#334155",
-  },
-  socialButtonLabel: {
-    color: "#cbd5e1",
-  },
-  dividerLine: {
-    backgroundColor: "#334155",
-  },
-  dividerText: {
-    color: "#64748b",
   },
 });
