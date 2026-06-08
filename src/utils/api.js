@@ -1,66 +1,62 @@
 /**
  * API utility functions for backend communication
  */
-import Constants from "expo-constants";
-import { Platform } from "react-native";
 
-const LOCAL_RAG_PORT = 8001;
+import { getExtra } from "../config/env";
+import { fetchWithRetry } from "./fetchWithRetry";
 
-const getExpoDevHost = () => {
-  const hostUri =
-    Constants.expoConfig?.hostUri ||
-    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-    Constants.manifest?.debuggerHost;
-
-  if (!hostUri) return null;
-  return hostUri.split(":")[0];
+const normalizeApiUrl = (url) => {
+  if (!url) return "";
+  const trimmed = url.trim().replace(/\/+$/, "");
+  // Common typo: onrender.co instead of onrender.com
+  return trimmed.replace(/\.onrender\.co$/i, ".onrender.com");
 };
 
-const resolveRagApiUrl = () => {
-  const envUrl =
-    process.env.EXPO_PUBLIC_RAG_API_URL || process.env.NEXT_PUBLIC_RAG_API_URL;
-  const devHost = getExpoDevHost();
+const RAG_DEFAULT = "https://agrisence.onrender.com";
+const DISEASE_DEFAULT = "https://agrisence-plant-disease-detection.onrender.com";
+const APP_DEFAULT = "https://agrisence-backend.onrender.com/api";
 
-  // Expo Go on a physical device: use the same LAN IP as the Metro bundler
-  if (__DEV__ && devHost && !["localhost", "192.168.0.102"].includes(devHost)) {
-    return `http://${devHost}:${LOCAL_RAG_PORT}`;
-  }
+export const RAG_API_BASE_URL = normalizeApiUrl(
+  getExtra("ragApiUrl", process.env.EXPO_PUBLIC_RAG_API_URL || RAG_DEFAULT)
+);
 
-  if (envUrl) {
-    if (Platform.OS === "android" && envUrl.includes("localhost")) {
-      return envUrl.replace("localhost", "192.168.0.102");
-    }
-    return envUrl;
-  }
+export const DISEASE_API_BASE_URL = normalizeApiUrl(
+  getExtra("diseaseApiUrl", process.env.EXPO_PUBLIC_DISEASE_API_URL || DISEASE_DEFAULT)
+);
 
-  if (Platform.OS === "android") {
-    return `http://192.168.0.102:${LOCAL_RAG_PORT}`;
-  }
-
-  return `http://192.168.0.102:${LOCAL_RAG_PORT}`;
+const resolveAppApiUrl = () => {
+  const raw =
+    getExtra("appApiUrl", process.env.EXPO_PUBLIC_APP_API_URL || APP_DEFAULT) || APP_DEFAULT;
+  const normalized = normalizeApiUrl(raw);
+  if (!normalized) return APP_DEFAULT;
+  return normalized.endsWith("/api") ? normalized : `${normalized}/api`;
 };
 
-export const RAG_API_BASE_URL = resolveRagApiUrl();
+export const APP_API_BASE_URL = resolveAppApiUrl();
 
-export const DISEASE_API_BASE_URL =
-  process.env.EXPO_PUBLIC_DISEASE_API_URL ||
-  process.env.NEXT_PUBLIC_DISEASE_API_URL ||
-  "https://agrisence-plant-disease-detection.onrender.com";
-export const APP_API_BASE_URL =
-  process.env.EXPO_PUBLIC_APP_API_URL ||
-  process.env.NEXT_PUBLIC_APP_API_URL ||
-  "https://agrisence-backend.onrender.com/api";
-
-export async function checkRagHealth() {
-  const response = await fetch(`${RAG_API_BASE_URL}/health`, {
-    method: "GET",
-  });
-
+export async function checkRagHealth({ retries = 2, timeoutMs = 45000 } = {}) {
+  const response = await fetchWithRetry(
+    `${RAG_API_BASE_URL}/health`,
+    { method: "GET" },
+    { retries, timeoutMs }
+  );
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(data.detail || `RAG health check failed with status ${response.status}`);
   }
   return data;
+}
+
+export async function checkDiseaseHealth({ retries = 2, timeoutMs = 45000 } = {}) {
+  const response = await fetchWithRetry(
+    `${DISEASE_API_BASE_URL}/health`,
+    { method: "GET" },
+    { retries, timeoutMs }
+  );
+  if (!response.ok) {
+    throw new Error(`Disease health check failed with status ${response.status}`);
+  }
+  return response.json().catch(() => ({}));
 }
 
 /**
@@ -82,7 +78,7 @@ export async function predictDisease(imageFile, topK = 3) {
       formData.append("file", imageFile);
     }
 
-    const response = await fetch(`${DISEASE_API_BASE_URL}/predict?top_k=${topK}`, {
+    const response = await fetchWithRetry(`${DISEASE_API_BASE_URL}/predict?top_k=${topK}`, {
       method: "POST",
       body: formData,
     });
@@ -111,7 +107,7 @@ export async function predictDisease(imageFile, topK = 3) {
  */
 export async function getDiseaseInfo(diseaseName) {
   try {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${DISEASE_API_BASE_URL}/disease-info/${encodeURIComponent(diseaseName)}`
     );
 
@@ -154,24 +150,12 @@ export async function getDiseaseClasses() {
  * Check API health status
  * @returns {Promise<Object>} Health status
  */
-export async function checkAPIHealth() {
-  try {
-    const response = await fetch(`${DISEASE_API_BASE_URL}/health`);
-
-    if (!response.ok) {
-      throw new Error(`Health check failed with status ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Health check error:", error);
-    throw error;
-  }
+export async function checkAPIHealth(options) {
+  return checkDiseaseHealth(options);
 }
 
 export async function askRagAssistant({ question, language, chatHistory }) {
-  const response = await fetch(`${RAG_API_BASE_URL}/ask`, {
+  const response = await fetchWithRetry(`${RAG_API_BASE_URL}/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -202,7 +186,7 @@ export async function askRagAssistant({ question, language, chatHistory }) {
 }
 
 export async function translateAssistantText({ text, language }) {
-  const response = await fetch(`${RAG_API_BASE_URL}/translate`, {
+  const response = await fetchWithRetry(`${RAG_API_BASE_URL}/translate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, language }),
@@ -216,7 +200,7 @@ export async function translateAssistantText({ text, language }) {
 }
 
 export async function speakText({ text, language }) {
-  const response = await fetch(`${RAG_API_BASE_URL}/speak`, {
+  const response = await fetchWithRetry(`${RAG_API_BASE_URL}/speak`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, language }),
@@ -232,7 +216,7 @@ export async function speakText({ text, language }) {
 }
 
 export async function saveChatSession({ token, sessionId, title, language, messages }) {
-  const response = await fetch(`${APP_API_BASE_URL}/chat-history`, {
+  const response = await fetchWithRetry(`${APP_API_BASE_URL}/chat-history`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -249,7 +233,7 @@ export async function saveChatSession({ token, sessionId, title, language, messa
 }
 
 export async function getChatSessions(token) {
-  const response = await fetch(`${APP_API_BASE_URL}/chat-history`, {
+  const response = await fetchWithRetry(`${APP_API_BASE_URL}/chat-history`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -261,7 +245,7 @@ export async function getChatSessions(token) {
 }
 
 export async function getChatSession({ token, sessionId }) {
-  const response = await fetch(`${APP_API_BASE_URL}/chat-history/${sessionId}`, {
+  const response = await fetchWithRetry(`${APP_API_BASE_URL}/chat-history/${sessionId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -273,7 +257,7 @@ export async function getChatSession({ token, sessionId }) {
 }
 
 export async function deleteChatSession({ token, sessionId }) {
-  const response = await fetch(`${APP_API_BASE_URL}/chat-history/${sessionId}`, {
+  const response = await fetchWithRetry(`${APP_API_BASE_URL}/chat-history/${sessionId}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
