@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  FlatList,
   Modal,
   ActivityIndicator,
   Alert,
@@ -20,7 +19,8 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import storageService from "../services/storageService";
-import { APP_API_BASE_URL as API_URL } from "../utils/api";
+import { useAuth } from "../context/AuthContext";
+import { appApiFetch, fetchCommunityPosts, getResolvedAppApiBaseUrl } from "../utils/appApi";
 import { useTheme } from "../theme/ThemeContext";
 import { useThemedStyles } from "../theme/useThemedStyles";
 import { createCommunityStyles } from "./communityStyles";
@@ -74,6 +74,27 @@ const timeAgo = (date) => {
   return `${years}y ago`;
 };
 
+const POST_TAG_OPTIONS = [
+  { id: "disease", label: "Disease Help" },
+  { id: "tips", label: "Farming Tips" },
+  { id: "success", label: "Success Story" },
+];
+
+const inferTagsFromContent = (content) => {
+  const lower = (content || "").toLowerCase();
+  const tags = new Set();
+  if (/\b(disease|pest|blight|virus|fungus|infection|symptom|bug|worm)\b/.test(lower)) {
+    tags.add("disease");
+  }
+  if (/\b(tip|advice|how to|fertiliz|irrigation|planting|spray|seed|crop)\b/.test(lower)) {
+    tags.add("tips");
+  }
+  if (/\b(success|harvest|yield|profit|improved|record)\b/.test(lower)) {
+    tags.add("success");
+  }
+  return [...tags];
+};
+
 // ─── Avatar Gradient Helper ─────────────────────────────────────────────
 const AVATAR_GRADIENTS = [
   "#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16",
@@ -90,7 +111,7 @@ const getInitials = (name) => {
 };
 
 // ─── Avatar Component ─────────────────────────────────────────────
-const Avatar = ({ src, name, size = 40, isOnline = false }) => {
+const Avatar = ({ src, name, size = 40 }) => {
   const styles = useThemedStyles(createCommunityStyles);
   const color = getAvatarColor(name);
 
@@ -121,20 +142,6 @@ const Avatar = ({ src, name, size = 40, isOnline = false }) => {
           <Text style={[styles.avatarText, { fontSize: size * 0.42 }]}>{getInitials(name)}</Text>
         )}
       </View>
-      {isOnline && (
-        <View
-          style={[
-            styles.onlineDot,
-            {
-              width: size * 0.28,
-              height: size * 0.28,
-              borderRadius: size * 0.14,
-              right: size * 0.02,
-              bottom: size * 0.02,
-            },
-          ]}
-        />
-      )}
     </View>
   );
 };
@@ -277,12 +284,11 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
   const [isPosting, setIsPosting] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
   const [localPost, setLocalPost] = useState(post);
-  const [isOnline, setIsOnline] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
-    setIsOnline(Math.random() > 0.7);
-  }, []);
+    setLocalPost(post);
+  }, [post]);
 
   const liked = user && localPost.likes?.some((l) => l.userId === user.id);
   const comments = localPost.comments || [];
@@ -305,14 +311,15 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
     if (isLiking) return;
 
     setIsLiking(true);
+    const previousLikes = localPost.likes || [];
     const newLikes = liked
-      ? localPost.likes.filter((l) => l.userId !== user.id)
-      : [...(localPost.likes || []), { userId: user.id }];
+      ? previousLikes.filter((l) => l.userId !== user.id)
+      : [...previousLikes, { userId: user.id }];
 
     setLocalPost((prev) => ({ ...prev, likes: newLikes }));
 
     try {
-      const res = await fetch(`${API_URL}/posts/like`, {
+      const res = await appApiFetch("/posts/like", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -329,7 +336,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
       }
     } catch (error) {
       console.error("Like error:", error);
-      setLocalPost(post);
+      setLocalPost((prev) => ({ ...prev, likes: previousLikes }));
     } finally {
       setIsLiking(false);
     }
@@ -343,9 +350,10 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
     if (!commentText.trim() || isPosting) return;
 
     setIsPosting(true);
+    const commentBody = commentText.trim();
     const tempComment = {
       id: Date.now().toString(),
-      text: commentText,
+      text: commentBody,
       createdAt: new Date().toISOString(),
       user: { id: user.id, name: user.name, avatar: user.avatar },
       likes: 0,
@@ -359,21 +367,24 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
     setCommentText("");
 
     try {
-      const res = await fetch(`${API_URL}/posts/comment`, {
+      const res = await appApiFetch("/posts/comment", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getAuthToken()}`,
         },
-        body: JSON.stringify({ postId: localPost.id, text: commentText }),
+        body: JSON.stringify({ postId: localPost.id, text: commentBody }),
       });
 
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          const updatedComments = [...(localPost.comments || []), data.comment];
-          onPostUpdate?.(localPost.id, { comments: updatedComments });
-          setLocalPost((prev) => ({ ...prev, comments: updatedComments }));
+          setLocalPost((prev) => {
+            const withoutTemp = (prev.comments || []).filter((c) => c.id !== tempComment.id);
+            const updatedComments = [...withoutTemp, data.comment];
+            onPostUpdate?.(localPost.id, { comments: updatedComments });
+            return { ...prev, comments: updatedComments };
+          });
         }
       }
     } catch (error) {
@@ -398,7 +409,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
           style: "destructive",
           onPress: async () => {
             try {
-              const res = await fetch(`${API_URL}/posts/${localPost.id}`, {
+              const res = await appApiFetch(`/posts/${localPost.id}`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${getAuthToken()}` },
               });
@@ -433,7 +444,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
     if (!user) return null;
 
     try {
-      const res = await fetch(`${API_URL}/posts/comment/reply`, {
+      const res = await appApiFetch("/posts/comment/reply", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -465,7 +476,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
     if (!user) return;
 
     try {
-      const res = await fetch(`${API_URL}/posts/comment/like`, {
+      const res = await appApiFetch("/posts/comment/like", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -519,7 +530,7 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
       {/* Header */}
       <View style={styles.postHeader}>
         <View style={styles.postUserInfo}>
-          <Avatar src={localPost.user?.avatar} name={localPost.user?.name} size={48} isOnline={isOnline} />
+          <Avatar src={localPost.user?.avatar} name={localPost.user?.name} size={48} />
           <View style={styles.postUserMeta}>
             <View style={styles.postUserNameRow}>
               <Text style={styles.postUserName}>{localPost.user?.name || "Unknown"}</Text>
@@ -631,21 +642,16 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
       {/* Comments Section */}
       {isCommentsOpen && (
         <View style={styles.commentsSection}>
-          {comments.length > 0 && (
-            <FlatList
-              data={comments}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <CommentItem
-                  comment={item}
-                  user={user}
-                  onReply={handleReply}
-                  onLike={handleCommentLike}
-                />
-              )}
-              scrollEnabled={false}
-            />
-          )}
+          {comments.length > 0 &&
+            comments.map((item) => (
+              <CommentItem
+                key={item.id}
+                comment={item}
+                user={user}
+                onReply={handleReply}
+                onLike={handleCommentLike}
+              />
+            ))}
 
           {user ? (
             <View style={styles.commentInputContainer}>
@@ -691,9 +697,8 @@ const PostCard = ({ post, user, token, onPostUpdate, onAuthRequired }) => {
 export default function CommunityScreen({ AuthModalComponent }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createCommunityStyles);
+  const { user, token, login } = useAuth();
   const [posts, setPosts] = useState([]);
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -704,8 +709,11 @@ export default function CommunityScreen({ AuthModalComponent }) {
   const [newPostMediaMime, setNewPostMediaMime] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [usingMockData, setUsingMockData] = useState(false);
+  const [authStartInSignup, setAuthStartInSignup] = useState(false);
+  const [showingCachedPosts, setShowingCachedPosts] = useState(false);
+  const [newPostTags, setNewPostTags] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [feedError, setFeedError] = useState("");
   const scrollRef = useRef(null);
 
   const filters = [
@@ -715,73 +723,42 @@ export default function CommunityScreen({ AuthModalComponent }) {
     { id: "success", label: "Success Stories", icon: TrendingUp },
   ];
 
-  // Load user and token on mount
-  useEffect(() => {
-    loadUserAndToken();
-  }, []);
-
-  // Fetch posts when component mounts
   useEffect(() => {
     fetchPosts();
   }, []);
 
-  const loadUserAndToken = async () => {
-    try {
-      const savedToken = await storageService.getItem("token");
-      const savedUser = await storageService.getItem("user");
-
-      if (savedToken && savedUser) {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-      }
-    } catch (error) {
-      // Silent fallback
-    }
-  };
-
   const fetchPosts = async () => {
+    setFeedError("");
     try {
       setLoading(true);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
+      const { posts: loadedPosts } = await fetchCommunityPosts();
+      setPosts(loadedPosts);
+      setShowingCachedPosts(false);
+      setFeedError("");
       try {
-        const response = await fetch(`${API_URL}/posts`, {
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.posts && data.posts.length > 0) {
-            setPosts(data.posts);
-            setUsingMockData(false);
-            try {
-              await storageService.setItem("cached_posts", JSON.stringify(data.posts));
-            } catch (cacheError) {
-              // Silent fail
-            }
-            return;
-          }
-        }
-        throw new Error("No posts from API");
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        try {
-          const cachedPosts = await storageService.getItem("cached_posts");
-          if (cachedPosts) {
-            setPosts(JSON.parse(cachedPosts));
-            setUsingMockData(true);
-            return;
-          }
-        } catch (cacheError) {
-          // Ignore
-        }
-        setPosts([]);
-        setUsingMockData(false);
+        await storageService.setItem("cached_posts", JSON.stringify(loadedPosts));
+      } catch (cacheError) {
+        // Silent fail
       }
+    } catch (error) {
+      console.warn("Community feed error:", error.message);
+      try {
+        const cachedPosts = await storageService.getItem("cached_posts");
+        if (cachedPosts) {
+          setPosts(JSON.parse(cachedPosts));
+          setShowingCachedPosts(true);
+          setFeedError("Showing saved posts — server is slow or offline. Pull to refresh.");
+          return;
+        }
+      } catch (cacheError) {
+        // Ignore
+      }
+      setPosts([]);
+      setShowingCachedPosts(false);
+      setFeedError(
+        error.message ||
+          "Could not load the community feed. The server may need up to a minute to wake up — tap Retry."
+      );
     } finally {
       setLoading(false);
     }
@@ -828,7 +805,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
           name: isVideo ? `post_${Date.now()}.mp4` : `post_${Date.now()}.jpg`,
         });
 
-        const uploadResponse = await fetch(`${API_URL}/upload`, {
+        const uploadResponse = await appApiFetch("/upload", {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body: uploadForm,
@@ -843,7 +820,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
         mediaType = isVideo ? "video" : "image";
       }
 
-      const response = await fetch(`${API_URL}/posts`, {
+      const response = await appApiFetch("/posts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -853,6 +830,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
           content,
           mediaUrl,
           mediaType,
+          tags: [...new Set([...newPostTags, ...inferTagsFromContent(content)])],
         }),
       });
 
@@ -865,6 +843,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
       setPosts((prev) => [data.post, ...prev]);
       setShowCreateModal(false);
       setNewPostContent("");
+      setNewPostTags([]);
       setNewPostMedia(null);
       setNewPostMediaType(null);
       setNewPostMediaMime(null);
@@ -962,8 +941,13 @@ export default function CommunityScreen({ AuthModalComponent }) {
     }
   };
 
-  const handleAuthRequired = () => {
+  const openAuthModal = (signup = false) => {
+    setAuthStartInSignup(signup);
     setShowAuthModal(true);
+  };
+
+  const handleAuthRequired = () => {
+    openAuthModal(false);
   };
 
   const handleCreatePostClick = () => {
@@ -974,17 +958,16 @@ export default function CommunityScreen({ AuthModalComponent }) {
     }
   };
 
-  const handleAuthSuccess = (userData, userToken) => {
-    setUser(userData);
-    setToken(userToken);
-    try {
-      storageService.setItem("token", userToken);
-      storageService.setItem("user", JSON.stringify(userData));
-    } catch (error) {
-      // Silent fail
-    }
+  const handleAuthSuccess = async (userData, userToken) => {
+    await login(userData, userToken);
     setShowAuthModal(false);
     fetchPosts();
+  };
+
+  const toggleNewPostTag = (tagId) => {
+    setNewPostTags((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    );
   };
 
   const filteredPosts = posts.filter((post) => {
@@ -1031,6 +1014,26 @@ export default function CommunityScreen({ AuthModalComponent }) {
           title="Farmer Community"
           subtitle="Connect, share tips, and learn from growers near you"
         >
+          {!user ? (
+            <View style={styles.authBanner}>
+              <Text style={styles.authBannerText}>Sign in to post, like, and comment</Text>
+              <View style={styles.authBannerActions}>
+                <TouchableOpacity style={styles.authPrimaryButton} onPress={handleAuthRequired}>
+                  <Text style={styles.authPrimaryButtonText}>Sign in</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.authSecondaryButton}
+                  onPress={() => openAuthModal(true)}
+                >
+                  <Text style={styles.authSecondaryButtonText}>Create account</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.loggedInBanner}>
+              <Text style={styles.loggedInText}>Logged in as {user.name}</Text>
+            </View>
+          )}
           <View style={styles.statsRow}>
             <View style={styles.statPill}>
               <Leaf size={14} color={colors.primary} />
@@ -1044,13 +1047,25 @@ export default function CommunityScreen({ AuthModalComponent }) {
               <Heart size={14} color={colors.danger} />
               <Text style={styles.statPillText}>{totalLikes} Likes</Text>
             </View>
-            {usingMockData && (
+            {showingCachedPosts && (
               <View style={[styles.statPill, styles.statPillWarn]}>
-                <Text style={styles.statPillTextWarn}>Demo Mode</Text>
+                <Text style={styles.statPillTextWarn}>Offline cache</Text>
               </View>
             )}
           </View>
         </ScreenHero>
+
+        {feedError ? (
+          <View style={styles.feedErrorBanner}>
+            <Text style={styles.feedErrorText}>{feedError}</Text>
+            <TouchableOpacity style={styles.feedRetryButton} onPress={fetchPosts}>
+              <Text style={styles.feedRetryButtonText}>Retry</Text>
+            </TouchableOpacity>
+            <Text style={styles.feedErrorHint} numberOfLines={1}>
+              API: {getResolvedAppApiBaseUrl().replace(/^https?:\/\//, "")}
+            </Text>
+          </View>
+        ) : null}
 
         {/* Search Bar */}
         <View style={styles.searchBar}>
@@ -1116,8 +1131,15 @@ export default function CommunityScreen({ AuthModalComponent }) {
             <Text style={styles.emptyText}>
               {searchQuery
                 ? "Try a different search term"
+                : feedError
+                ? "Pull down to refresh once the server is online."
                 : "Be the first to share your farming journey!"}
             </Text>
+            {!searchQuery && !user ? (
+              <TouchableOpacity style={styles.emptySignInButton} onPress={handleAuthRequired}>
+                <Text style={styles.emptySignInButtonText}>Sign in to get started</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : (
           <View style={styles.feed}>
@@ -1181,6 +1203,36 @@ export default function CommunityScreen({ AuthModalComponent }) {
               </Text>
             </View>
 
+            <View style={styles.modalTagSection}>
+              <Text style={[styles.modalTagLabel, { color: colors.textSecondary }]}>Post category</Text>
+              <View style={styles.modalTagRow}>
+                {POST_TAG_OPTIONS.map((tag) => {
+                  const active = newPostTags.includes(tag.id);
+                  return (
+                    <TouchableOpacity
+                      key={tag.id}
+                      style={[
+                        styles.modalTagChip,
+                        { borderColor: colors.border, backgroundColor: colors.inputBg },
+                        active && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}
+                      onPress={() => toggleNewPostTag(tag.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.modalTagChipText,
+                          { color: colors.textSecondary },
+                          active && { color: colors.onPrimary },
+                        ]}
+                      >
+                        {tag.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
             {newPostMedia && (
               <View style={styles.modalMediaPreview}>
                 {newPostMediaType === "video" ? (
@@ -1242,6 +1294,7 @@ export default function CommunityScreen({ AuthModalComponent }) {
       {AuthModalComponent && (
         <AuthModalComponent
           isOpen={showAuthModal}
+          startInSignup={authStartInSignup}
           onClose={() => setShowAuthModal(false)}
           onSuccess={handleAuthSuccess}
         />

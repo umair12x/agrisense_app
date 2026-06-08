@@ -11,12 +11,22 @@ import {
   Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { Leaf, Camera, Upload, AlertTriangle, CheckCircle, X, Zap, Shield } from "lucide-react-native";
 import { predictDisease, getDiseaseInfo } from "../utils/api";
 import { useTheme } from "../theme/ThemeContext";
 import { useThemedStyles } from "../theme/useThemedStyles";
 import { createDiseaseStyles } from "./diseaseStyles";
 import ScreenHero from "../components/ScreenHero";
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const validateImageSize = async (uri) => {
+  const info = await FileSystem.getInfoAsync(uri);
+  if (info.exists && info.size && info.size > MAX_IMAGE_BYTES) {
+    throw new Error("Image must be 5MB or smaller. Please choose a smaller photo.");
+  }
+};
 
 const TRUST_FEATURES = [
   {
@@ -106,14 +116,16 @@ export default function DiseaseScreen() {
       });
 
       if (!response.canceled && response.assets?.length > 0) {
-        setSelectedImage(normalizePickedAsset(response.assets[0]));
+        const asset = response.assets[0];
+        await validateImageSize(asset.uri);
+        setSelectedImage(normalizePickedAsset(asset));
         setResult(null);
         setHasAnalyzed(false);
         setShowSourceModal(false);
       }
     } catch (error) {
       console.error("Gallery picker error:", error);
-      Alert.alert("Error", "Failed to open gallery.");
+      Alert.alert("Error", error.message || "Failed to open gallery.");
     }
   };
 
@@ -131,14 +143,16 @@ export default function DiseaseScreen() {
       });
 
       if (!response.canceled && response.assets?.length > 0) {
-        setSelectedImage(normalizePickedAsset(response.assets[0]));
+        const asset = response.assets[0];
+        await validateImageSize(asset.uri);
+        setSelectedImage(normalizePickedAsset(asset));
         setResult(null);
         setHasAnalyzed(false);
         setShowSourceModal(false);
       }
     } catch (error) {
       console.error("Camera error:", error);
-      Alert.alert("Error", "Failed to open camera.");
+      Alert.alert("Error", error.message || "Failed to open camera.");
     }
   };
 

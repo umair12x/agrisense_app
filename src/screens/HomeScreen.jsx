@@ -1,11 +1,12 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Leaf, Brain, Users, Sparkles, Server, ChevronRight } from "lucide-react-native";
 import { useTheme } from "../theme/ThemeContext";
 import ScreenHero from "../components/ScreenHero";
 import { SCREEN_LAYOUT } from "../theme/layout";
-import { RAG_API_BASE_URL, DISEASE_API_BASE_URL, APP_API_BASE_URL } from "../utils/api";
+import { RAG_API_BASE_URL, DISEASE_API_BASE_URL, APP_API_BASE_URL, checkRagHealth, checkDiseaseHealth } from "../utils/api";
+import { appApiFetch } from "../utils/appApi";
 
 const formatHost = (url) =>
   url.replace(/^https?:\/\//, "").replace(/\/api\/?$/, "").replace(/\/+$/, "");
@@ -16,24 +17,68 @@ const BACKEND_SERVICES = [
     label: "Disease Detection API",
     description: "Cotton leaf image analysis & predictions",
     url: DISEASE_API_BASE_URL,
+    check: () => checkDiseaseHealth({ retries: 1, timeoutMs: 30000 }),
   },
   {
     key: "rag",
     label: "RAG Assistant API",
     description: "Farming Q&A, translation & voice",
     url: RAG_API_BASE_URL,
+    check: () => checkRagHealth({ retries: 1, timeoutMs: 30000 }),
   },
   {
     key: "app",
     label: "Community & Auth API",
     description: "Posts, profiles & chat history",
     url: APP_API_BASE_URL,
+    check: async () => {
+      const response = await appApiFetch("/posts", { method: "GET" }, { retries: 1, timeoutMs: 30000 });
+      if (!response.ok) {
+        throw new Error(`Community API returned ${response.status}`);
+      }
+    },
   },
 ];
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const [serviceStatus, setServiceStatus] = useState({
+    disease: "checking",
+    rag: "checking",
+    app: "checking",
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkService = async (service) => {
+      try {
+        await service.check();
+        if (!cancelled) {
+          setServiceStatus((prev) => ({ ...prev, [service.key]: "online" }));
+        }
+      } catch {
+        if (!cancelled) {
+          setServiceStatus((prev) => ({ ...prev, [service.key]: "offline" }));
+        }
+      }
+    };
+
+    BACKEND_SERVICES.forEach((service) => {
+      checkService(service);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const statusColor = (status) => {
+    if (status === "online") return colors.success;
+    if (status === "offline") return colors.danger;
+    return colors.warning;
+  };
 
   const modules = [
     {
@@ -69,6 +114,7 @@ export default function HomeScreen() {
         eyebrow="Welcome back"
         title="AgriSense"
         subtitle="Intelligent agriculture powered by cotton disease AI, a multilingual RAG assistant, and your farmer community."
+        showThemeToggle
         style={{ marginBottom: 12 }}
       />
 
@@ -100,6 +146,8 @@ export default function HomeScreen() {
               style={[styles.moduleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={() => navigation.navigate(module.route)}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${module.title}`}
             >
               <View style={[styles.moduleIconWrap, { backgroundColor: module.tint }]}>
                 <Icon size={26} color={colors.primaryDark} />
@@ -121,31 +169,46 @@ export default function HomeScreen() {
             <Server size={18} color={colors.primaryDark} />
           </View>
           <View style={styles.statsHeaderText}>
-            <Text style={[styles.statsTitle, { color: colors.text }]}>Connected backends</Text>
+            <Text style={[styles.statsTitle, { color: colors.text }]}>Backend status</Text>
             <Text style={[styles.statsSubtitle, { color: colors.textSecondary }]}>
-              Three Render services power this app
+              Live health checks — free-tier servers may take up to a minute on first load
             </Text>
           </View>
         </View>
 
-        {BACKEND_SERVICES.map((service, index) => (
-          <View
-            key={service.key}
-            style={[
-              styles.serviceRow,
-              index < BACKEND_SERVICES.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 },
-            ]}
-          >
-            <View style={styles.serviceRowTop}>
-              <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
-              <Text style={[styles.serviceLabel, { color: colors.text }]}>{service.label}</Text>
+        {BACKEND_SERVICES.map((service, index) => {
+          const status = serviceStatus[service.key];
+          return (
+            <View
+              key={service.key}
+              style={[
+                styles.serviceRow,
+                index < BACKEND_SERVICES.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 },
+              ]}
+            >
+              <View style={styles.serviceRowTop}>
+                {status === "checking" ? (
+                  <ActivityIndicator size="small" color={colors.warning} style={styles.statusSpinner} />
+                ) : (
+                  <View style={[styles.statusDot, { backgroundColor: statusColor(status) }]} />
+                )}
+                <Text style={[styles.serviceLabel, { color: colors.text }]}>{service.label}</Text>
+                <Text
+                  style={[
+                    styles.serviceStatusText,
+                    { color: status === "online" ? colors.success : status === "offline" ? colors.danger : colors.warning },
+                  ]}
+                >
+                  {status === "checking" ? "Checking…" : status === "online" ? "Online" : "Offline"}
+                </Text>
+              </View>
+              <Text style={[styles.serviceDesc, { color: colors.textSecondary }]}>{service.description}</Text>
+              <Text style={[styles.serviceValue, { color: colors.primary }]} numberOfLines={2}>
+                {formatHost(service.url)}
+              </Text>
             </View>
-            <Text style={[styles.serviceDesc, { color: colors.textSecondary }]}>{service.description}</Text>
-            <Text style={[styles.serviceValue, { color: colors.primary }]} numberOfLines={2}>
-              {formatHost(service.url)}
-            </Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
     </ScrollView>
   );
@@ -203,9 +266,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 12,
   },
-  moduleTitle: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
-  moduleDesc: { fontSize: 12, lineHeight: 17, minHeight: 34 },
-  moduleFooter: { flexDirection: "row", alignItems: "center", marginTop: 10, gap: 2 },
+  moduleTitle: { fontSize: 16, fontWeight: "700", marginBottom: 6 },
+  moduleDesc: { fontSize: 13, lineHeight: 18, marginBottom: 12, flex: 1 },
+  moduleFooter: { flexDirection: "row", alignItems: "center", gap: 4 },
   moduleLink: { fontSize: 13, fontWeight: "600" },
   statsCard: {
     marginHorizontal: SCREEN_LAYOUT.horizontalPadding,
@@ -214,7 +277,7 @@ const styles = StyleSheet.create({
     borderRadius: SCREEN_LAYOUT.cardRadius,
     borderWidth: 1,
   },
-  statsHeader: { flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 12 },
+  statsHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 16 },
   statsIconWrap: {
     width: 40,
     height: 40,
@@ -223,12 +286,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   statsHeaderText: { flex: 1 },
-  statsTitle: { fontSize: 16, fontWeight: "700" },
-  statsSubtitle: { fontSize: 12, marginTop: 2 },
-  serviceRow: { paddingVertical: 12 },
+  statsTitle: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
+  statsSubtitle: { fontSize: 12, lineHeight: 17 },
+  serviceRow: { paddingVertical: 14 },
   serviceRowTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  serviceLabel: { fontSize: 14, fontWeight: "600" },
-  serviceDesc: { fontSize: 12, marginBottom: 6, marginLeft: 16 },
-  serviceValue: { fontSize: 11, fontWeight: "600", marginLeft: 16 },
+  statusSpinner: { width: 8, height: 8 },
+  serviceLabel: { fontSize: 14, fontWeight: "600", flex: 1 },
+  serviceStatusText: { fontSize: 12, fontWeight: "600" },
+  serviceDesc: { fontSize: 12, marginBottom: 4, paddingLeft: 16 },
+  serviceValue: { fontSize: 11, paddingLeft: 16 },
 });

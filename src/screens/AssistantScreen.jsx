@@ -13,10 +13,10 @@ import {
   Keyboard,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { playAudioBlob, releaseActiveAudio } from "../utils/playAudio";
+import { playAudioBlob, releaseActiveAudio, stopActiveAudio } from "../utils/playAudio";
 import storageService from "../services/storageService";
+import { useAuth } from "../context/AuthContext";
 import {
-  RAG_API_BASE_URL,
   askRagAssistant,
   translateAssistantText,
   speakText,
@@ -33,6 +33,7 @@ import {
   Sparkles,
   BookOpen,
   Volume2,
+  Square,
   Languages,
   Plus,
   Trash2,
@@ -42,8 +43,6 @@ import {
 import { useTheme } from "../theme/ThemeContext";
 import { useThemedStyles } from "../theme/useThemedStyles";
 import { createAssistantStyles } from "./assistantStyles";
-import ThemeToggle from "../components/ThemeToggle";
-
 const LOCAL_SESSIONS_KEY = "assistant_local_sessions";
 const LOCAL_MESSAGES_KEY = "assistant_current_messages";
 
@@ -74,6 +73,8 @@ const normalizeMessages = (items = []) =>
 const ChatMessage = ({
   message,
   onSpeak,
+  onStopSpeak,
+  speakingId,
   onTranslate,
   translating,
   translation,
@@ -130,13 +131,20 @@ const ChatMessage = ({
           <View style={styles.actionRow}>
             <Text style={styles.actionRowLabel}>Translate reply</Text>
             <View style={styles.actionPillRow}>
-              <TouchableOpacity
-                style={styles.actionPill}
-                onPress={() => onSpeak({ ...message, text: displayText })}
-              >
-                <Volume2 size={13} color={colors.primary} />
-                <Text style={styles.actionPillText}>Listen</Text>
-              </TouchableOpacity>
+              {speakingId === message.id ? (
+                <TouchableOpacity style={[styles.actionPill, styles.actionPillActive]} onPress={onStopSpeak}>
+                  <Square size={12} color={colors.primaryDark} fill={colors.primaryDark} />
+                  <Text style={[styles.actionPillText, styles.actionPillTextActive]}>Stop</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.actionPill}
+                  onPress={() => onSpeak({ ...message, text: displayText })}
+                >
+                  <Volume2 size={13} color={colors.primary} />
+                  <Text style={styles.actionPillText}>Listen</Text>
+                </TouchableOpacity>
+              )}
 
               {LANGUAGES.filter((lang) => lang.code !== message.language).map((lang) => {
                 const isActive = activeTranslationLang === lang.code;
@@ -204,6 +212,7 @@ export default function AssistantScreen({ AuthModalComponent }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createAssistantStyles);
   const insets = useSafeAreaInsets();
+  const { user, token, login, logout, isHydrated } = useAuth();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -216,10 +225,8 @@ export default function AssistantScreen({ AuthModalComponent }) {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [savedSessions, setSavedSessions] = useState([]);
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
   const [error, setError] = useState("");
-  const [isListening, setIsListening] = useState(false);
+  const [speakingId, setSpeakingId] = useState(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [responseTranslations, setResponseTranslations] = useState({});
   const [activeResponseLang, setActiveResponseLang] = useState({});
@@ -227,11 +234,6 @@ export default function AssistantScreen({ AuthModalComponent }) {
   const [ragConnected, setRagConnected] = useState(false);
   const [ragChecking, setRagChecking] = useState(true);
   const scrollViewRef = useRef();
-
-  // Load user data on mount
-  useEffect(() => {
-    loadUserData();
-  }, []);
 
   // Check deployed RAG API connection (Render may need time to wake up)
   const verifyRagConnection = useCallback(async () => {
@@ -279,8 +281,7 @@ export default function AssistantScreen({ AuthModalComponent }) {
     scrollViewRef.current?.scrollToEnd({ animated: true });
   }, [messages, loading]);
 
-  // Show auth modal after 2 AI replies
-  const aiReplyCount = messages.filter((m) => m.sender === "ai").length - 1;
+  const aiReplyCount = messages.filter((m) => m.sender === "ai" && !m.isError).length - 1;
   useEffect(() => {
     if (!user && aiReplyCount >= 2) {
       setShowAuthModal(true);
@@ -366,23 +367,18 @@ export default function AssistantScreen({ AuthModalComponent }) {
     return currentSessionId;
   };
 
-  const loadUserData = async () => {
+  const loadAssistantData = useCallback(async () => {
     try {
-      const savedToken = await storageService.getItem("token");
-      const savedUser = await storageService.getItem("user");
       let restoredMessages = false;
 
-      if (savedToken && savedUser) {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-
+      if (token) {
         try {
-          const data = await getChatSessions(savedToken);
+          const data = await getChatSessions(token);
           const sessions = data.sessions || [];
           setSavedSessions(sessions);
           await storageService.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(sessions));
           restoredMessages = await loadCachedMessages();
-        } catch (error) {
+        } catch {
           restoredMessages = await loadLocalSessions();
         }
       } else {
@@ -393,10 +389,15 @@ export default function AssistantScreen({ AuthModalComponent }) {
         setMessages(getWelcomeMessages());
       }
     } catch (err) {
-      console.warn("Failed to load user data:", err.message);
+      console.warn("Failed to load assistant data:", err.message);
       setMessages(getWelcomeMessages());
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    loadAssistantData();
+  }, [isHydrated, loadAssistantData]);
 
   const persistMessages = async (nextMessages) => {
     const activeSessionId = sessionId || `session-${Date.now()}`;
@@ -496,6 +497,7 @@ export default function AssistantScreen({ AuthModalComponent }) {
           text: "Sorry, I could not reach the agriculture knowledge base right now. Please check your internet connection and try again.",
           language: "en",
           sources: [],
+          isError: true,
           createdAt: new Date().toISOString(),
         },
       ]);
@@ -566,15 +568,24 @@ export default function AssistantScreen({ AuthModalComponent }) {
 
   const speak = async (message) => {
     setError("");
+    setSpeakingId(message.id);
     try {
       const audioBlob = await speakText({
         text: message.text,
         language: message.language,
       });
-      await playAudioBlob(audioBlob);
+      await playAudioBlob(audioBlob, "mp3", {
+        onPlaybackEnd: () => setSpeakingId(null),
+      });
     } catch (err) {
+      setSpeakingId(null);
       setError(err.message || "Could not generate audio. Please try again.");
     }
+  };
+
+  const stopSpeaking = () => {
+    stopActiveAudio();
+    setSpeakingId(null);
   };
 
   useEffect(() => {
@@ -662,8 +673,7 @@ export default function AssistantScreen({ AuthModalComponent }) {
   };
 
   const handleAuthSuccess = async (userData, userToken) => {
-    setUser(userData);
-    setToken(userToken);
+    await login(userData, userToken);
     setShowAuthModal(false);
     try {
       await saveChatSession({
@@ -694,12 +704,10 @@ export default function AssistantScreen({ AuthModalComponent }) {
           text: "Logout",
           style: "destructive",
           onPress: async () => {
-            await storageService.removeItem("token");
-            await storageService.removeItem("user");
-            setUser(null);
-            setToken(null);
+            await logout();
             setSavedSessions([]);
             setShowSidebar(false);
+            startNewChat();
           },
         },
       ]
@@ -808,7 +816,6 @@ export default function AssistantScreen({ AuthModalComponent }) {
           </View>
 
           <View style={styles.headerActions}>
-            <ThemeToggle size={18} />
             <TouchableOpacity onPress={startNewChat} style={styles.iconButton} hitSlop={8}>
               <Plus size={22} color={colors.primary} />
             </TouchableOpacity>
@@ -855,6 +862,8 @@ export default function AssistantScreen({ AuthModalComponent }) {
                   key={message.id}
                   message={message}
                   onSpeak={speak}
+                  onStopSpeak={stopSpeaking}
+                  speakingId={speakingId}
                   onTranslate={handleTranslateMessage}
                   translating={translating}
                   translation={translation}
