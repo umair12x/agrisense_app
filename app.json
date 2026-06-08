@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "agrisenseapp",
+    "name": "AgriSense",
     "slug": "agrisenseapp",
-    "version": "1.0.0",
+    "version": "5.2.1",
     "orientation": "portrait",
-    "icon": "./assets/splash-icon.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#f6f6e0"
+      "backgroundColor": "#ecfdf5"
     },
     "ios": {
       "supportsTablet": true,
@@ -22,21 +22,26 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/splash-icon.png",
-        "backgroundColor": "#fff6f6e0ffff"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ecfdf5"
       },
       "edgeToEdgeEnabled": true,
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": false,
+      "softwareKeyboardLayoutMode": "resize"
     },
     "plugins": [
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow AgriSense to access your photos for disease detection and community posts.",
-          "cameraPermission": "Allow AgriSense to access your camera for disease detection and community posts."
+          "photosPermission": "Allow AgriSense to access your photos and videos for disease detection and community posts.",
+          "cameraPermission": "Allow AgriSense to access your camera for disease detection and community posts.",
+          "microphonePermission": "Allow AgriSense to record audio when capturing videos for community posts."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-splash-screen",
+      "expo-audio",
+      "expo-video"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

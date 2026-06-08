@@ -1,71 +1,58 @@
 # AgriSense App
 
-AgriSense is a React Native + Expo mobile application for smart agriculture. It combines plant disease detection, soil monitoring visuals, an AI farming assistant, and a farmer community feed in one app.
+AgriSense is a React Native + Expo mobile application for smart agriculture. It combines cotton plant disease detection, a multilingual AI farming assistant (RAG), and a farmer community feed in one app.
 
 ## Features
 
-- Home overview with platform modules and impact stats
-- Dashboard with soil trend visualization, alerts, and quick actions
-- Disease detection from leaf images using backend AI inference
-- Soil monitoring screen with NPK, pH, moisture, and recommendations
-- AI assistant with multilingual support, source references, and chat sessions
-- Community feed with posting, likes, comments, media uploads, and auth modal
-- Persistent storage with AsyncStorage + SecureStore fallback handling
+- **Home** — module overview, theme toggle, live backend health checks
+- **Disease detection** — cotton leaf image analysis with treatment tips (5MB limit enforced)
+- **AI assistant** — Urdu, Punjabi & English Q&A, TTS listen/stop, chat sessions, shared auth
+- **Community** — posts, likes, comments, media uploads, category tags, offline post cache
+- **Auth** — email login/signup with shared session across tabs (AuthContext)
+- **Theming** — light/dark mode
 
 ## Tech Stack
 
 - Expo SDK 54
 - React 19 + React Native 0.81
-- React Navigation (bottom tabs)
-- `expo-image-picker`, `expo-av`, `expo-secure-store`
+- React Navigation (custom bottom tabs)
+- `expo-image-picker`, `expo-audio`, `expo-secure-store`, `expo-file-system`
 - `@react-native-async-storage/async-storage`
-- `react-native-chart-kit`
 
 ## Project Structure
 
 ```text
 .
-|- App.js
-|- AppTabs.jsx
-|- NavigationTabs.jsx
-|- src/
-|  |- components/
-|  |- screens/
-|  |- services/
-|  |- utils/
-|  |- styles/
-|- doc/
-|- API_SETUP.md
+├── App.js
+├── AppTabs.jsx
+├── NavigationTabs.jsx
+├── app.config.js
+├── eas.json
+├── src/
+│   ├── components/
+│   ├── config/
+│   ├── context/        # AuthContext
+│   ├── screens/
+│   ├── services/
+│   ├── theme/
+│   └── utils/          # api.js, appApi.js, fetchWithRetry.js
+└── __tests__/
 ```
 
 ## Prerequisites
 
 - Node.js 18+
 - pnpm (recommended) or npm
-- Expo CLI (optional, `npx expo` works)
-- Android emulator / iOS simulator / Expo Go
+- Expo Go or EAS Build for device testing
 
 ## Quick Start
 
-1. Install dependencies:
-
 ```bash
 pnpm install
-```
-
-If you use npm:
-
-```bash
-npm install
-```
-
-2. Start Expo:
-
-```bash
 pnpm start
 ```
 
-3. Run on a target:
+Run on a target:
 
 ```bash
 pnpm android
@@ -75,68 +62,31 @@ pnpm web
 
 ## Available Scripts
 
-- `pnpm start`: start Expo dev server
-- `pnpm android`: open Android target
-- `pnpm ios`: open iOS target
-- `pnpm web`: run web target
+- `pnpm start` — Expo dev server
+- `pnpm android` / `pnpm ios` / `pnpm web` — platform targets
+- `pnpm build:apk` — production Android APK via EAS
+- `pnpm test` — Jest unit tests
 
-## Environment Variables
+## Backend APIs
 
-Create a `.env` file in the project root for custom backend endpoints.
+Three Render-hosted services (URLs baked in `app.config.js` / `expo.extra`):
 
-```env
-EXPO_PUBLIC_RAG_API_URL=http://<YOUR_IP>:8001
-EXPO_PUBLIC_DISEASE_API_URL=https://agrisence-plant-disease-detection.onrender.com
-EXPO_PUBLIC_APP_API_URL=https://agrisence-backend.onrender.com/api
+| Service | Purpose |
+|---------|---------|
+| Disease API | Cotton leaf prediction |
+| RAG API | Assistant Q&A, translation, TTS |
+| Community API | Auth, posts, chat history |
 
-# Optional compatibility keys used in utility fallback logic
-NEXT_PUBLIC_RAG_API_URL=
-NEXT_PUBLIC_DISEASE_API_URL=
-NEXT_PUBLIC_APP_API_URL=
+Free-tier cold starts can take up to ~60 seconds. Community and assistant calls use timeouts and retries.
+
+## Production APK
+
+See `EAS_BUILD.md` for environment variables and build steps. After code changes, rebuild:
+
+```bash
+pnpm run build:apk
 ```
-
-Notes:
-- `src/utils/api.js` resolves RAG API dynamically in development, including LAN host usage for Expo Go.
-- Default fallbacks are already defined for disease and app APIs.
-- On Android/emulator or physical devices, `localhost` usually does not work for remote APIs.
-
-## API and Service Notes
-
-- App/community/auth API base: `APP_API_BASE_URL`
-- Disease inference API base: `DISEASE_API_BASE_URL`
-- Assistant (RAG) API base: `RAG_API_BASE_URL`
-- Community expects endpoints like:
-  - `GET /posts`
-  - `POST /posts`
-  - `POST /posts/like`
-  - `POST /posts/comment`
-  - `POST /auth/login`
-  - `POST /auth/signup`
-
-## Permissions and Native Config
-
-`app.json` already includes:
-- `expo-image-picker` plugin with camera and photo permission strings
-- `expo-secure-store` plugin
-- Android cleartext traffic enabled for local networking in development
-
-## Troubleshooting
-
-- Network request failures:
-  - Confirm API URLs are reachable from your device/emulator.
-  - Use your machine LAN IP for local servers, not `localhost`.
-- Auth/session issues:
-  - Check token/user keys in secure storage and AsyncStorage fallback behavior.
-- Image picker issues in Expo Go:
-  - Ensure camera/media permissions are granted.
-
-For detailed API troubleshooting and examples, see `API_SETUP.md`.
-
-## Documentation
-
-- Main docs hub: `doc/README.md`
-- API setup and known issues: `API_SETUP.md`
 
 ## Version
 
-Current package version: `5.2.1`
+App version **5.2.1** (`package.json` and `app.json` aligned).
